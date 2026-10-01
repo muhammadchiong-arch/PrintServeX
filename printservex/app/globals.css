@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+/* PrintServeX design tokens (from the style guide). Change colors here only. */
+:root {
+  --navy: #0f1e3d;
+  --blue: #2563eb;
+  --blue-hover: #1d4ed8;
+  --blue-tint: #eff4ff;
+  --slate: #5a6880;
+  --bg: #f6f8fb;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --row-hover: #f9fafc;
+
+  /* Brand accents: logo and tiny details only, never buttons or statuses */
+  --cyan: #00a9e0;
+  --magenta: #e6007e;
+  --yellow: #ffc20e;
+
+  /* Status colors (text) and their light tints (badge background) */
+  --pending: #b45309;
+  --pending-tint: #fef3e2;
+  --processing: #2563eb;
+  --processing-tint: #eaf1ff;
+  --ready: #7c3aed;
+  --ready-tint: #f2ecfe;
+  --completed: #15803d;
+  --completed-tint: #e7f5ec;
+  --cancelled: #b91c1c;
+  --cancelled-tint: #fdecec;
+}
+
+/* Makes the tokens usable as Tailwind classes, e.g. bg-navy, text-slate, border-border */
+@theme inline {
+  --color-navy: var(--navy);
+  --color-blue: var(--blue);
+  --color-blue-hover: var(--blue-hover);
+  --color-blue-tint: var(--blue-tint);
+  --color-slate: var(--slate);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-row-hover: var(--row-hover);
+  --color-cyan: var(--cyan);
+  --color-magenta: var(--magenta);
+  --color-yellow: var(--yellow);
+  --color-pending: var(--pending);
+  --color-pending-tint: var(--pending-tint);
+  --color-processing: var(--processing);
+  --color-processing-tint: var(--processing-tint);
+  --color-ready: var(--ready);
+  --color-ready-tint: var(--ready-tint);
+  --color-completed: var(--completed);
+  --color-completed-tint: var(--completed-tint);
+  --color-cancelled: var(--cancelled);
+  --color-cancelled-tint: var(--cancelled-tint);
+
+  --font-sans: var(--font-inter);
+  --font-heading: var(--font-montserrat);
+
+  /* The one soft shadow, for cards only */
+  --shadow-card: 0 1px 3px rgb(15 30 61 / 0.06), 0 4px 16px rgb(15 30 61 / 0.05);
+  --shadow-pop: 0 16px 48px rgb(15 30 61 / 0.2);
+}
+
+body {
+  background: var(--bg);
+  color: var(--navy);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-montserrat), system-ui, sans-serif;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+/* Visible focus ring for keyboard users: 2px blue, 2px offset */
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* Prices and reference numbers line up neatly */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Respect "reduce motion": keep quick fades, drop movement */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 120ms !important;
+    transition-property: opacity, background-color, color, border-color !important;
+  }
+}
+
+/* Respect "reduce transparency": translucent bars become solid white */
+@media (prefers-reduced-transparency: reduce) {
+  [data-material] {
+    background: var(--surface) !important;
+    backdrop-filter: none !important;
+  }
+}
+
+/* Small enter animations used by Modal and Toast */
+@keyframes psx-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes psx-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
