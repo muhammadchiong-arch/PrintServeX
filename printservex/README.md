@@ -10,6 +10,7 @@ Next.js (App Router) + TypeScript + Tailwind CSS + Supabase.
    NEXT_PUBLIC_SUPABASE_URL=...
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
    SUPABASE_SERVICE_ROLE_KEY=...   # secret, server only (Supabase → Project Settings → API Keys)
+   CRON_SECRET=...                 # only needed on Vercel, for the daily file cleanup
    ```
 3. `npm run dev` and open http://localhost:3000
 
@@ -32,6 +33,13 @@ Next.js (App Router) + TypeScript + Tailwind CSS + Supabase.
 | S11 Users | `/staff/users` |
 | S12 Settings | `/staff/settings` |
 | S13 Profile | `/staff/profile` |
+
+## Daily file cleanup (Vercel)
+
+`vercel.json` runs `/api/cleanup-files` every day at 3:00 AM Manila time. It deletes files of
+closed orders older than 30 days (as the privacy notice promises) and uploads that never became
+an order. Add `CRON_SECRET` (any long random text) in Vercel → Settings → Environment Variables;
+without it the cleanup never runs.
 
 ## Database setup (Supabase → SQL Editor, in this order, once each)
 

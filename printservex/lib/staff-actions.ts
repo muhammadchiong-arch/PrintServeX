@@ -58,6 +58,8 @@ export async function getFileLink(ref: string, position: number): Promise<{ ok: 
     .eq("orders.ref", ref)
     .eq("position", position)
     .maybeSingle();
+  // Business rule (privacy notice): files are deleted 30 days after the order is closed
+  if (item && !item.storage_path) return { ok: false, error: "This file was deleted. Files are kept for 30 days." };
   if (!item?.storage_path) return { ok: false, error: "This file isn't in storage." };
 
   const { data, error } = await supabase.storage
