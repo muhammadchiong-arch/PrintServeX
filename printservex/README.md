@@ -50,6 +50,7 @@ without it the cleanup never runs.
 5. `supabase/005b_first_admin.sql` – the shop owner's account (read the steps at the top first)
 6. `supabase/006_staff_work.sql` – staff actions: order status, payments, final price, stock, temporary passwords
 7. `supabase/007_pricing_shop.sql` – saving Pricing & options and Shop info (admin only)
+8. `supabase/008_no_double_actions.sql` – an order can't be moved, cancelled or paid twice
 
 After that, sign in as the owner and add the other staff on the Users page.
 

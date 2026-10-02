@@ -71,7 +71,8 @@ function Toast({ item, onDone }: { item: ToastItem; onDone: () => void }) {
       className={cn(
         // Enters from 8px below (starting: = @starting-style), leaves faster than it came
         "pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-lg px-4 py-3 text-sm transition-[opacity,translate] ease-snap starting:translate-y-2 starting:opacity-0",
-        item.leaving ? "translate-y-1 opacity-0 duration-150" : "duration-200",
+        // A leaving toast can't be clicked (its action would run twice)
+        item.leaving ? "pointer-events-none translate-y-1 opacity-0 duration-150" : "duration-200",
         isError ? "border border-border bg-surface text-navy shadow-card" : "bg-navy text-white shadow-pop",
       )}
     >

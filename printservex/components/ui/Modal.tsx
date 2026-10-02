@@ -31,9 +31,11 @@ export function Modal({ open, onClose, title, description, children, footer }: M
       ref={ref}
       aria-labelledby={titleId}
       onClose={onClose}
+      // Fades in when opened. Closing is instant on purpose: a fading dialog could still be
+      // clicked (e.g. paying twice) and would show its content being cleared.
       // Clicking the dark area outside the box closes it
       onClick={(e) => e.target === ref.current && onClose()}
-      className="m-auto w-[440px] max-w-[calc(100%-32px)] rounded-xl bg-surface p-0 text-navy shadow-pop backdrop:bg-navy/45 opacity-0 transition-[opacity,translate,overlay,display] transition-discrete duration-150 ease-snap open:translate-y-0 open:opacity-100 open:duration-200 starting:open:translate-y-2 starting:open:opacity-0 backdrop:opacity-0 backdrop:transition-[opacity,overlay,display] backdrop:transition-discrete backdrop:duration-150 open:backdrop:opacity-100 starting:open:backdrop:opacity-0"
+      className="m-auto w-[440px] max-w-[calc(100%-32px)] rounded-xl bg-surface p-0 text-navy shadow-pop backdrop:bg-navy/45 transition-[opacity,translate] duration-200 ease-snap starting:open:translate-y-2 starting:open:opacity-0 backdrop:transition-opacity backdrop:duration-200 starting:open:backdrop:opacity-0"
     >
       <div className="flex flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-4">
