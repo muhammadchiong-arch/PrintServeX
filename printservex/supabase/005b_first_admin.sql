@@ -11,8 +11,8 @@
 
 insert into public.staff_profiles (id, full_name, username, role)
 select id,
-       'YOUR FULL NAME',   -- <-- full name
-       'your.username',    -- <-- username: small letters, numbers, dots; 3 to 30 characters
+       'PrintServeX',   -- <-- full name
+       lower('admin'),  -- <-- username: small letters, numbers, dots; 3 to 30 characters
        'admin'
 from auth.users
-where email = 'YOUR EMAIL';  -- <-- the same email as step A
+where lower(email) = lower('Kairchiong@gmail.com');  -- <-- the same email as step A (capitals don't matter)
