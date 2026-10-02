@@ -6,19 +6,21 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
+import { changeMyPassword } from "@/lib/staff-actions";
 import { PageTitle } from "./parts";
 import { useStaff } from "./StaffStore";
 
 // Business rule: passwords need at least 10 characters and a number
 const strongEnough = (p: string) => p.length >= 10 && /\d/.test(p);
 
-// S13: change your own password (Supabase Auth later: supabase.auth.updateUser)
+// S13: change your own password (checked and saved on the server with Supabase Auth)
 export function Profile() {
-  const { me, log } = useStaff();
+  const { me, refresh } = useStaff();
   const toast = useToast();
   const [cur, setCur] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const ruleOk = strongEnough(next);
   const mismatch = confirm.length > 0 && confirm !== next;
@@ -31,14 +33,21 @@ export function Profile() {
       <PageTitle>Profile</PageTitle>
       <form
         className="flex w-[480px] max-w-full flex-col gap-4 rounded-xl bg-surface p-6 shadow-card"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
-          if (!canSave) return;
+          if (!canSave || saving) return;
+          setSaving(true);
+          const result = await changeMyPassword(cur, next).catch(() => null);
+          setSaving(false);
+          if (!result?.ok) {
+            toast({ kind: "error", message: result?.error ?? "We couldn't reach the server. Try again." });
+            return;
+          }
           setCur("");
           setNext("");
           setConfirm("");
-          log("Password changed", me.name);
           toast({ message: "Password updated." });
+          refresh(); // hides the "temporary password" reminder
         }}
       >
         <div className="flex items-center gap-3 border-b border-border pb-4">
@@ -77,8 +86,8 @@ export function Profile() {
           onChange={(e) => setConfirm(e.target.value)}
           error={mismatch ? "Passwords don't match." : undefined}
         />
-        <Button type="submit" size="md" disabled={!canSave} className="self-start">
-          Update password
+        <Button type="submit" size="md" disabled={!canSave || saving} className="self-start">
+          {saving ? "Saving…" : "Update password"}
         </Button>
       </form>
     </>

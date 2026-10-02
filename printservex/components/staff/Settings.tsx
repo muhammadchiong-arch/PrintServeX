@@ -4,26 +4,19 @@ import { useState } from "react";
 import { Download, Info } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Modal } from "@/components/ui/Modal";
 import { Tabs } from "@/components/ui/Tabs";
 import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/Toast";
 import { formatDateTime } from "@/lib/format";
 import { SHOP, UPLOAD_RULES } from "@/lib/shop";
 import { PageTitle, tableHead } from "./parts";
-import { staffNow, useStaff, type StaffData } from "./StaffStore";
+import type { StaffData } from "@/lib/staff-data";
+import { useStaff } from "./StaffStore";
 
 type Tab = "shop" | "backup" | "audit";
 type BackupFile = { name: string; at: string; size: string; url: string };
 
-// A restore file must contain these lists, or it's not a PrintServeX backup
-function isBackup(x: unknown): x is StaffData {
-  const d = x as Partial<StaffData> | null;
-  return Boolean(d && Array.isArray(d.orders) && Array.isArray(d.inventory) && Array.isArray(d.users) && Array.isArray(d.activity));
-}
-
 function ShopInfo() {
-  const { log } = useStaff();
   const toast = useToast();
   const [f, setF] = useState({
     name: SHOP.name,
@@ -41,8 +34,7 @@ function ShopInfo() {
       className="grid max-w-[744px] grid-cols-2 gap-x-6 gap-y-4 p-6"
       onSubmit={(e) => {
         e.preventDefault();
-        log("Shop info changed", f.name);
-        toast({ message: "Shop info saved." });
+        toast({ message: "Changed on this page only. Saving shop info to the database comes in the next step." });
       }}
     >
       <p className="col-span-2 flex items-center gap-2 rounded-lg border border-dashed border-[#b9c6da] px-3 py-2 text-sm text-slate">
@@ -71,12 +63,11 @@ function BackupRestore() {
   const staff = useStaff();
   const toast = useToast();
   const [made, setMade] = useState<BackupFile[]>([]);
-  const [file, setFile] = useState<File | null>(null);
-  const [confirming, setConfirming] = useState(false);
 
-  // Business rule: a backup has orders, customers, prices and inventory, but not the uploaded files
+  // Business rule: a backup has orders, customers, staff accounts, inventory and the audit log,
+  // but not the uploaded files. It's a copy to keep; restoring is done in Supabase (below).
   const createBackup = () => {
-    const now = staffNow();
+    const now = new Date();
     const data: StaffData = { orders: staff.orders, inventory: staff.inventory, users: staff.users, activity: staff.activity };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     // e.g. 202610011142 (Philippine time)
@@ -89,30 +80,17 @@ function BackupRestore() {
     a.href = backup.url;
     a.download = backup.name;
     a.click();
-    staff.log("Backup created", `Manual · ${backup.size}`);
+    void staff.logBackup(`Manual · ${backup.size}`);
     toast({ message: `Backup created · ${backup.size}` });
-  };
-
-  const restore = async () => {
-    setConfirming(false);
-    if (!file) return;
-    try {
-      const parsed: unknown = JSON.parse(await file.text());
-      if (!isBackup(parsed)) throw new Error("wrong shape");
-      staff.replaceAll(parsed);
-      staff.log("Backup restored", file.name);
-      toast({ message: `Restored from ${file.name}.` });
-      setFile(null);
-    } catch {
-      toast({ kind: "error", message: `${file.name} isn't a PrintServeX backup. Nothing was changed.` });
-    }
   };
 
   return (
     <div className="grid grid-cols-2 gap-4 p-6">
       <div className="flex flex-col gap-2 rounded-xl border border-border p-5">
         <h2 className="text-base">Back up now</h2>
-        <p className="text-sm text-slate">Saves orders, customers, staff accounts, inventory and the audit log as a file. Uploaded print files are not included.</p>
+        <p className="text-sm text-slate">
+          Saves orders, customers, staff accounts, inventory and the audit log as a file. Uploaded print files are not included.
+        </p>
         <Button size="md" className="mt-2 self-start" onClick={createBackup}>
           Create backup
         </Button>
@@ -120,20 +98,9 @@ function BackupRestore() {
 
       <div className="flex flex-col gap-2 rounded-xl border border-border p-5">
         <h2 className="text-base">Restore</h2>
-        <p className="text-sm text-slate">Replaces all current data with the backup. Sign out every other staff member first.</p>
-        <label className="mt-2 flex flex-col gap-1.5 text-sm font-medium">
-          Backup file
-          <input
-            type="file"
-            accept=".json,application/json"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="text-sm file:mr-3 file:h-9 file:cursor-pointer file:rounded-lg file:border file:border-border file:bg-surface file:px-3 file:font-semibold file:text-navy"
-          />
-        </label>
-        {/* Disabled until a file is chosen */}
-        <Button size="md" variant="danger" className="self-start" disabled={!file} onClick={() => setConfirming(true)}>
-          Restore backup
-        </Button>
+        <p className="text-sm text-slate">
+          The data lives in Supabase, which keeps its own daily backups. To go back to an earlier day, open Supabase → Database → Backups.
+        </p>
       </div>
 
       {made.length > 0 && (
@@ -153,23 +120,6 @@ function BackupRestore() {
           ))}
         </div>
       )}
-
-      <Modal
-        open={confirming}
-        onClose={() => setConfirming(false)}
-        title="Replace all data?"
-        description={`Everything in the portal will be replaced with ${file?.name ?? "the backup"}. Changes made since that backup will be lost.`}
-        footer={
-          <>
-            <Button size="md" variant="secondary" onClick={() => setConfirming(false)}>
-              Keep current data
-            </Button>
-            <Button size="md" variant="danger" onClick={restore}>
-              Restore backup
-            </Button>
-          </>
-        }
-      />
     </div>
   );
 }

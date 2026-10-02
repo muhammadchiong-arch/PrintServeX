@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
 import { formatDate, formatDateTime, formatPeso, formatPhone, formatTime } from "@/lib/format";
 import { amountDue, canCancel, estimatedTotal, itemAddOns, itemPrinting, NEXT_STATUS, PAYMENT_LABELS, type Order } from "@/lib/orders";
+import { getFileLink } from "@/lib/staff-actions";
 import { STATUS_LABELS, type OrderStatus } from "@/lib/status";
 import { BackLink, CardLabel } from "../parts";
 import { useStaff } from "../StaffStore";
@@ -32,6 +33,7 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
   const toast = useToast();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [busy, setBusy] = useState(false); // a change is being saved
 
   const order = staff.orders.find((o) => o.ref === orderRef);
   if (!order) {
@@ -49,13 +51,17 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
   const closed = order.status === "completed" || order.status === "cancelled";
   const pastOrders = staff.orders.filter((o) => o.customer.phone === order.customer.phone && o.ref !== order.ref).length;
 
-  const advance = () => {
+  const advance = async () => {
     if (next === "completed") return setPayOpen(true);
-    if (!next) return;
-    staff.setStatus(order.ref, next);
-    toast({
-      message: next === "ready" ? "Marked Ready for Pickup. Customer status page updated." : `Status updated to ${STATUS_LABELS[next]}.`,
-    });
+    if (next !== "processing" && next !== "ready") return;
+    setBusy(true);
+    const saved = await staff.setStatus(order.ref, next);
+    setBusy(false);
+    if (saved) {
+      toast({
+        message: next === "ready" ? "Marked Ready for Pickup. Customer status page updated." : `Status updated to ${STATUS_LABELS[next]}.`,
+      });
+    }
   };
 
   // Business rule: show ONLY the next valid action for the current status
@@ -74,13 +80,13 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
         </span>
         <div className="ml-auto flex gap-2">
           {canCancel(order.status) && (
-            <Button size="md" variant="dangerOutline" onClick={() => setCancelOpen(true)}>
+            <Button size="md" variant="dangerOutline" disabled={busy} onClick={() => setCancelOpen(true)}>
               <X size={16} aria-hidden />
               Cancel
             </Button>
           )}
           {next && next !== "cancelled" && (
-            <Button size="md" onClick={advance}>
+            <Button size="md" disabled={busy} onClick={advance}>
               <PrimaryIcon size={16} aria-hidden />
               {primaryLabel[next as keyof typeof primaryLabel]}
             </Button>
@@ -96,9 +102,9 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
         <div className="flex flex-col gap-4">
-          {order.items.map((i) => (
+          {order.items.map((i, index) => (
             <article key={i.fileName} className="grid grid-cols-[150px_minmax(0,1fr)] gap-5 rounded-xl bg-surface p-4 shadow-card">
-              {/* Placeholder until uploaded files are stored (Supabase Storage) */}
+              {/* No page previews yet: open the file with Download */}
               <div className="flex h-[196px] items-center justify-center rounded-lg border border-border bg-[repeating-linear-gradient(135deg,#f6f8fb_0_8px,#ecf0f5_8px_16px)] p-2 text-center font-mono text-[11px] text-slate">
                 page 1 preview
               </div>
@@ -110,10 +116,7 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
                       {i.pages} {i.pages === 1 ? "page" : "pages"} · {i.fileSize}
                     </p>
                   </div>
-                  <Button size="md" variant="secondary" disabled title="Downloads work once uploaded files are saved">
-                    <Download size={16} aria-hidden />
-                    Download
-                  </Button>
+                  <DownloadButton orderRef={order.ref} position={index + 1} fileName={i.fileName} />
                 </div>
                 <dl className="grid grid-cols-3 gap-x-4 gap-y-3 text-sm">
                   {[
@@ -188,9 +191,10 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
         open={cancelOpen}
         orderRef={order.ref}
         onClose={() => setCancelOpen(false)}
-        onConfirm={(reason) => {
-          staff.cancelOrder(order.ref, reason);
-          toast({ message: `${order.ref} cancelled.` });
+        onConfirm={async (reason) => {
+          setBusy(true);
+          if (await staff.cancelOrder(order.ref, reason)) toast({ message: `${order.ref} cancelled.` });
+          setBusy(false);
         }}
       />
       <PaymentModal
@@ -198,10 +202,14 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
         orderRef={order.ref}
         amountDue={amountDue(order)}
         onClose={() => setPayOpen(false)}
-        onConfirm={(method) => {
-          staff.completeOrder(order.ref, method, amountDue(order));
+        onConfirm={async (method) => {
           setPayOpen(false);
-          toast({ message: `Payment of ${formatPeso(amountDue(order))} (${PAYMENT_LABELS[method]}) recorded. Order completed.` });
+          setBusy(true);
+          // The server takes the amount from the order itself (final price, or the estimate)
+          if (await staff.completeOrder(order.ref, method)) {
+            toast({ message: `Payment of ${formatPeso(amountDue(order))} (${PAYMENT_LABELS[method]}) recorded. Order completed.` });
+          }
+          setBusy(false);
         }}
       />
     </>
@@ -219,6 +227,7 @@ function PriceCard({ order, locked }: { order: Order; locked: boolean }) {
 
   const [amount, setAmount] = useState((order.final?.amount ?? estimate).toFixed(2));
   const [note, setNote] = useState(order.final?.note ?? "");
+  const [saving, setSaving] = useState(false);
   const value = Number(amount);
   const valid = amount !== "" && Number.isFinite(value) && value >= 0;
   const changed = valid && (value !== (order.final?.amount ?? estimate) || note !== (order.final?.note ?? ""));
@@ -256,11 +265,14 @@ function PriceCard({ order, locked }: { order: Order; locked: boolean }) {
       ) : (
         <form
           className="flex flex-col gap-2"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            if (!changed || needsNote) return;
-            staff.setFinalPrice(order.ref, Math.round(value * 100) / 100, note.trim());
-            toast({ message: "Final price saved. The customer sees it on their status page." });
+            if (!changed || needsNote || saving) return;
+            setSaving(true);
+            if (await staff.setFinalPrice(order.ref, Math.round(value * 100) / 100, note.trim())) {
+              toast({ message: "Final price saved. The customer sees it on their status page." });
+            }
+            setSaving(false);
           }}
         >
           <label className="flex items-center justify-between gap-3">
@@ -292,8 +304,8 @@ function PriceCard({ order, locked }: { order: Order; locked: boolean }) {
             {needsNote && changed && <span className="text-xs text-cancelled">Add a note that explains the price change.</span>}
           </label>
           {changed && (
-            <Button type="submit" size="md" variant="secondary" disabled={needsNote} className="self-end">
-              Save final price
+            <Button type="submit" size="md" variant="secondary" disabled={needsNote || saving} className="self-end">
+              {saving ? "Saving…" : "Save final price"}
             </Button>
           )}
         </form>
@@ -326,14 +338,41 @@ function RemarksCard({ order }: { order: Order }) {
         labelNote="(staff only)"
         value={text}
         onChange={(e) => setText(e.target.value)}
-        onBlur={() => {
-          if (text !== (order.remarks ?? "")) {
-            staff.setRemarks(order.ref, text);
+        onBlur={async () => {
+          if (text !== (order.remarks ?? "") && (await staff.setRemarks(order.ref, text))) {
             toast({ message: "Remarks saved." });
           }
         }}
         placeholder="Notes for other staff, e.g. Customer asked to bind Ch1-2 only."
       />
     </div>
+  );
+}
+
+// Opens a short-lived download link for one uploaded file (made on the server)
+function DownloadButton({ orderRef, position, fileName }: { orderRef: string; position: number; fileName: string }) {
+  const toast = useToast();
+  const [loading, setLoading] = useState(false);
+  return (
+    <Button
+      size="md"
+      variant="secondary"
+      disabled={loading}
+      onClick={async () => {
+        setLoading(true);
+        try {
+          const link = await getFileLink(orderRef, position);
+          if (link.ok) window.location.assign(link.url);
+          else toast({ kind: "error", message: link.error });
+        } catch {
+          toast({ kind: "error", message: "We couldn't reach the server. Try again." });
+        }
+        setLoading(false);
+      }}
+    >
+      <Download size={16} aria-hidden />
+      {loading ? "Opening…" : "Download"}
+      <span className="sr-only"> {fileName}</span>
+    </Button>
   );
 }

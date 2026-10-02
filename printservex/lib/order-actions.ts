@@ -15,6 +15,7 @@ import {
 import type { Order, OrderItem } from "@/lib/orders";
 import { priceFile, priceOrder } from "@/lib/price";
 import { getPricingData } from "@/lib/pricing-data";
+import { getCurrentStaff } from "@/lib/staff-session";
 import { SHOP, UPLOAD_RULES } from "@/lib/shop";
 import { ORDER_FILES_BUCKET, supabaseAdmin } from "@/lib/supabase-admin";
 
@@ -71,7 +72,11 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
   const input = parsePlaceOrderInput(raw);
   if (!input || !UUID.test(input.batch)) return { ok: false, error: TRY_AGAIN };
 
-  const detailErrors = Object.values(validateDetails(input.customer));
+  // Walk-in orders: only signed-in staff, and the customer agrees to privacy at the counter
+  const staff = input.walkIn ? await getCurrentStaff() : null;
+  if (input.walkIn && !staff) return { ok: false, error: "You were signed out. Sign in again, then retry." };
+
+  const detailErrors = Object.values(validateDetails(input.customer, { requireConsent: !input.walkIn }));
   if (detailErrors.length > 0) return { ok: false, error: detailErrors[0] ?? TRY_AGAIN };
   if (input.items.length === 0 || input.items.length > UPLOAD_RULES.maxFilesPerOrder) return { ok: false, error: TRY_AGAIN };
 
@@ -145,29 +150,33 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
   };
 
   const { data: ref, error } = await supabaseAdmin.rpc("create_order", {
-    p_source: "online",
+    p_source: staff ? "walk-in" : "online",
     p_customer_name: customer.name,
     p_customer_phone: customer.phone,
     p_customer_email: customer.email ?? "",
     p_estimated_total: total,
     p_items: rows,
-    p_created_by: null,
-    p_actor_label: "Online order",
+    p_created_by: staff?.id ?? null,
+    p_actor_label: staff?.name ?? "Online order",
   });
   if (error || typeof ref !== "string") {
     console.error("placeOrder: create_order failed", error);
     return { ok: false, error: TRY_AGAIN };
   }
 
+  if (staff) {
+    await supabaseAdmin.from("audit_log").insert({ actor_id: staff.id, actor_label: staff.name, action: "Walk-in order created", details: `${ref} · ${customer.name}` });
+  }
+
   const now = new Date().toISOString();
   const order: Order = {
     ref,
-    source: "online",
+    source: staff ? "walk-in" : "online",
     customer,
     items,
     status: "pending",
     createdAt: now,
-    history: [{ status: "pending", at: now, by: "Online order" }],
+    history: [staff ? { status: "pending", at: now, by: staff.name, note: "Walk-in" } : { status: "pending", at: now, by: "Online order" }],
   };
   return { ok: true, order };
 }

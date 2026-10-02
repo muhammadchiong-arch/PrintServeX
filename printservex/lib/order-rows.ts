@@ -1,5 +1,5 @@
 // Turns order rows from Supabase into the app's Order type (lib/orders.ts).
-// Used by tracking now, and by the staff pages in step 7.
+// Used by tracking (lib/track.ts) and the staff pages (lib/staff-data.ts).
 
 import { formatFileSize } from "@/lib/files";
 import type { Order, PaymentMethod } from "@/lib/orders";
@@ -74,7 +74,9 @@ export function rowToOrder(row: OrderRow): Order {
   if (row.cancel_reason) order.cancelReason = row.cancel_reason;
   if (row.remarks) order.remarks = row.remarks;
   if (row.payment_method && row.paid_at) {
-    order.payment = { method: row.payment_method, amount: Number(row.paid_amount ?? 0), at: row.paid_at, by: "" };
+    // Who took the payment = who marked it completed
+    const by = order.history.findLast((h) => h.status === "completed")?.by ?? "";
+    order.payment = { method: row.payment_method, amount: Number(row.paid_amount ?? 0), at: row.paid_at, by };
   }
   return order;
 }

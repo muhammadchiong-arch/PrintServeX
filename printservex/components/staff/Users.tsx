@@ -8,8 +8,8 @@ import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/format";
-import type { Role, StaffUser } from "@/lib/sample/staff";
-import { makeTempPassword } from "@/lib/temp-password";
+import type { Role, StaffUser } from "@/lib/staff-types";
+import { addStaff, resetStaffPassword } from "@/lib/staff-actions";
 import { PageTitle, tableHead } from "./parts";
 import { useStaff } from "./StaffStore";
 
@@ -37,7 +37,9 @@ function TempPassword({ value }: { value: string }) {
 }
 
 function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { users, addUser } = useStaff();
+  const { users, refresh } = useStaff();
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [role, setRole] = useState<Role>("Staff");
@@ -48,7 +50,7 @@ function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
   const user = username.trim() || suggested;
   const errors = {
     name: name.trim().length >= 2 ? undefined : "Enter the full name.",
-    username: !/^[a-z0-9._]{3,}$/.test(user) ? "Use 3+ lowercase letters, numbers or dots." : users.some((u) => u.username === user) ? "This username is taken." : undefined,
+    username: !/^[a-z0-9._]{3,30}$/.test(user) ? "Use 3 to 30 lowercase letters, numbers or dots." : users.some((u) => u.username === user) ? "This username is taken." : undefined,
   };
 
   const close = () => {
@@ -80,11 +82,20 @@ function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
           </Button>
           <Button
             size="md"
-            onClick={() => {
+            disabled={saving}
+            onClick={async () => {
               setTried(true);
               if (errors.name || errors.username) return;
-              addUser({ name: name.trim(), username: user, role });
-              setPassword(makeTempPassword());
+              setSaving(true);
+              // The account and its temporary password are made on the server
+              const result = await addStaff({ name: name.trim(), username: user, role }).catch(() => null);
+              setSaving(false);
+              if (!result?.ok) {
+                toast({ kind: "error", message: result?.error ?? "We couldn't reach the server. Try again." });
+                return;
+              }
+              setPassword(result.password);
+              refresh();
             }}
           >
             Add staff
@@ -112,10 +123,11 @@ function AddStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
 
 // S11
 export function Users() {
-  const { users, me, setUserActive, log } = useStaff();
+  const { users, me, setUserActive } = useStaff();
   const toast = useToast();
   const [adding, setAdding] = useState(false);
   const [reset, setReset] = useState<{ user: StaffUser; password: string } | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null); // the account being saved
 
   return (
     <>
@@ -162,9 +174,12 @@ export function Users() {
                     <span className="block text-right text-xs text-slate">You</span>
                   ) : (
                     <div className="flex justify-end gap-2">
-                      <Button size="md" variant="secondary" className="h-8 px-2.5 text-[13px]" onClick={() => {
-                        setReset({ user: u, password: makeTempPassword() });
-                        log("Password reset", u.name);
+                      <Button size="md" variant="secondary" className="h-8 px-2.5 text-[13px]" disabled={busyId === u.id} onClick={async () => {
+                        setBusyId(u.id);
+                        const result = await resetStaffPassword(u.id).catch(() => null);
+                        setBusyId(null);
+                        if (result?.ok) setReset({ user: u, password: result.password });
+                        else toast({ kind: "error", message: result?.error ?? "We couldn't reach the server. Try again." });
                       }}>
                         Reset password<span className="sr-only"> for {u.name}</span>
                       </Button>
@@ -172,9 +187,12 @@ export function Users() {
                         size="md"
                         variant={u.active ? "dangerOutline" : "secondary"}
                         className="h-8 px-2.5 text-[13px]"
-                        onClick={() => {
-                          setUserActive(u.id, !u.active);
-                          toast({ message: `${u.name} ${u.active ? "deactivated. They can't sign in anymore." : "reactivated."}` });
+                        disabled={busyId === u.id}
+                        onClick={async () => {
+                          setBusyId(u.id);
+                          const saved = await setUserActive(u.id, !u.active);
+                          setBusyId(null);
+                          if (saved) toast({ message: `${u.name} ${u.active ? "deactivated. They can't sign in anymore." : "reactivated."}` });
                         }}
                       >
                         {u.active ? "Deactivate" : "Reactivate"}

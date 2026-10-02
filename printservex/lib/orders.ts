@@ -66,13 +66,6 @@ export function describeItem(i: OrderItem): string {
 // Business rule: reference numbers look like PSX-20261001-0042 (date + 4-digit number)
 export const REF_PATTERN = /^PSX-\d{8}-\d{4}$/;
 
-export function makeRef(at: Date, sequence: number): string {
-  const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" })
-    .format(at)
-    .replaceAll("-", "");
-  return `PSX-${ymd}-${String(sequence).padStart(4, "0")}`;
-}
-
 // Business rule: the next step staff can take for each status (S4 shows only this)
 export const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
   pending: "processing",

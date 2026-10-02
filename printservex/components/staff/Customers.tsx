@@ -71,7 +71,11 @@ export function Customers() {
           </div>
 
           {list.length === 0 ? (
-            <EmptyState icon={Users} title="No customers found" text="Try part of the name or the last digits of the contact number." />
+            all.length === 0 ? (
+              <EmptyState icon={Users} title="No customers yet" text="Customers appear here after their first order." />
+            ) : (
+              <EmptyState icon={Users} title="No customers found" text="Try part of the name or the last digits of the contact number." />
+            )
           ) : (
             <table className="w-full border-collapse text-sm">
               <caption className="sr-only">Customers</caption>

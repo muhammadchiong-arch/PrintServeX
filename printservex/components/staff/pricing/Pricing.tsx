@@ -12,7 +12,6 @@ import { formatPeso } from "@/lib/format";
 import { findRate, type PriceRule } from "@/lib/price";
 import type { PricingData } from "@/lib/pricing-data";
 import { PageTitle, tableHead } from "../parts";
-import { useStaff } from "../StaffStore";
 import { OptionModal, type OptionKind, type OptionRow } from "./OptionModal";
 
 type Tab = "sizes" | "papers" | "matrix" | "addons";
@@ -25,7 +24,6 @@ const dims = (label: string) => label.match(/\((.*)\)$/)?.[1] ?? "—";
 
 // S9. Business rule: options are archived, never deleted, so old orders keep their details.
 export function Pricing({ data }: { data: PricingData }) {
-  const { log } = useStaff();
   const toast = useToast();
   const [tab, setTab] = useState<Tab>("matrix");
   const [rows, setRows] = useState<Record<Exclude<Tab, "matrix">, OptionRow[]>>(() => ({
@@ -61,14 +59,12 @@ export function Pricing({ data }: { data: PricingData }) {
     }
     setRules(next);
     setDraft({});
-    log("Price changed", `${data.types.find((t) => t.id === typeId)?.name} · ${Object.keys(draft).length} prices updated`);
-    toast({ message: "Prices saved. New orders use the new prices; existing orders keep theirs." });
+    toast({ message: "Changed on this page only. Saving prices to the database comes in the next step." });
   };
 
   const toggleArchive = (kind: Exclude<Tab, "matrix">, index: number) => {
     const row = rows[kind][index];
     setRows({ ...rows, [kind]: rows[kind].map((r, i) => (i === index ? { ...r, archived: !r.archived } : r)) });
-    log(row.archived ? "Option restored" : "Option archived", row.name);
     toast({ message: row.archived ? `${row.name} restored.` : `${row.name} archived. Past orders keep it.` });
   };
 
@@ -209,7 +205,6 @@ export function Pricing({ data }: { data: PricingData }) {
             const list = rows[editing.kind];
             const next = editing.index === null ? [...list, row] : list.map((r, i) => (i === editing.index ? row : r));
             setRows({ ...rows, [editing.kind]: next });
-            log(editing.index === null ? "Option added" : "Option edited", row.name);
             toast({ message: `${row.name} saved.` });
             setEditing(null);
           }}

@@ -32,7 +32,7 @@ export async function signIn(_prev: SignInState, form: FormData): Promise<SignIn
   // The service role reads the profile because nobody is signed in yet
   const { data: profile, error: findError } = await supabaseAdmin
     .from("staff_profiles")
-    .select("id, full_name, is_active, locked_until")
+    .select("id, full_name, is_active, locked_until, must_change_password")
     .eq("username", username)
     .maybeSingle();
   if (findError) {
@@ -52,6 +52,8 @@ export async function signIn(_prev: SignInState, form: FormData): Promise<SignIn
 
   const supabase = await createStaffClient();
   const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+  // Deactivated accounts are also blocked in Supabase Auth (see setStaffActive)
+  if (authError?.code === "user_banned") return { error: "This account is turned off. Ask the shop owner." };
   if (authError) {
     const { data: lockedUntil } = await supabaseAdmin.rpc("record_failed_login", { p_id: profile.id });
     return { error: lockedUntil ? lockedMessage(lockedUntil) : WRONG };
@@ -66,7 +68,8 @@ export async function signIn(_prev: SignInState, form: FormData): Promise<SignIn
   await supabaseAdmin.rpc("record_login_success", { p_id: profile.id });
   await supabaseAdmin.from("audit_log").insert({ actor_id: profile.id, actor_label: profile.full_name, action: "Signed in" });
 
-  redirect(safeNext(form.get("next")));
+  // Business rule: a temporary password must be changed first
+  redirect(profile.must_change_password ? "/staff/profile" : safeNext(form.get("next")));
 }
 
 export async function signOut(): Promise<void> {

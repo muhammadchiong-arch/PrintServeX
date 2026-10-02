@@ -13,7 +13,6 @@ import { FilesStep } from "./FilesStep";
 import { OrderHeader } from "./OrderHeader";
 import { MobileOrderBar, PriceSummary, type SummaryAction } from "./PriceSummary";
 import { ReviewStep } from "./ReviewStep";
-import { buildOrderDraft, type OrderDraft } from "./build-order";
 import { STEPS, type Catalog, type OrderFile } from "./types";
 
 type OrderWizardProps = Catalog & {
@@ -21,7 +20,7 @@ type OrderWizardProps = Catalog & {
   // "customer" = full-page form at /order · "staff" = Walk-in order inside the staff portal
   variant: "customer" | "staff";
   // Saves the order. Returns an error message to show, or null when it worked.
-  onSubmit: (order: { draft: OrderDraft; details: CustomerDetails; files: OrderFile[] }) => Promise<string | null>;
+  onSubmit: (order: { details: CustomerDetails; files: OrderFile[] }) => Promise<string | null>;
 };
 
 const STAFF_STEPS = ["Customer", "Files & options", "Review"];
@@ -149,7 +148,7 @@ export function OrderWizard({ sizes, types, rules, variant, onSubmit }: OrderWiz
 
   const submit = async () => {
     setSubmitting(true); // stops a double tap from sending the order twice
-    const error = await onSubmit({ draft: buildOrderDraft(details, readyFiles, catalog, rules), details, files: readyFiles });
+    const error = await onSubmit({ details, files: readyFiles });
     if (error) {
       // Nothing was saved: let the customer try again
       setSubmitting(false);

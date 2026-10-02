@@ -7,9 +7,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/format";
-import type { InventoryMove } from "@/lib/sample/staff";
+import type { InventoryMove } from "@/lib/staff-types";
 import { BackLink, tableHead } from "../parts";
-import { staffNow, useStaff } from "../StaffStore";
+import { useStaff } from "../StaffStore";
 import { isLow } from "./Inventory";
 import { StockModal, type StockAction } from "./InventoryModals";
 
@@ -37,7 +37,7 @@ export function ItemDetail({ itemId }: { itemId: string }) {
   }
 
   // Used in the last 7 days = everything that went out (stock out + adjustments)
-  const weekAgo = staffNow().getTime() - 7 * 86_400_000;
+  const weekAgo = new Date().getTime() - 7 * 86_400_000;
   const used = item.moves.filter((m) => m.change < 0 && Date.parse(m.at) >= weekAgo).reduce((s, m) => s - m.change, 0);
 
   return (

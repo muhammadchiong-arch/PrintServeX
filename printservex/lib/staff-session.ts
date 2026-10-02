@@ -4,7 +4,7 @@
 import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
-import type { StaffUser } from "@/lib/sample/staff";
+import type { StaffUser } from "@/lib/staff-types";
 import { createStaffClient } from "@/lib/supabase-server";
 
 // cache(): several calls during one page load ask the database only once
@@ -17,7 +17,7 @@ export const getCurrentStaff = cache(async (): Promise<StaffUser | null> => {
   // RLS "read own profile" lets each person read only their own row
   const { data, error } = await supabase
     .from("staff_profiles")
-    .select("id, full_name, username, role, is_active, last_sign_in_at")
+    .select("id, full_name, username, role, is_active, last_sign_in_at, must_change_password")
     .eq("id", id)
     .maybeSingle();
   if (error) console.error("staff_profiles:", error.message);
@@ -30,6 +30,7 @@ export const getCurrentStaff = cache(async (): Promise<StaffUser | null> => {
     role: data.role === "admin" ? "Admin" : "Staff",
     active: true,
     lastSignIn: data.last_sign_in_at,
+    mustChangePassword: data.must_change_password,
   };
 });
 

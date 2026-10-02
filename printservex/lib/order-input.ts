@@ -20,6 +20,7 @@ export type PlaceOrderInput = {
   customer: CustomerDetails;
   batch: string; // the upload folder from prepareUploads
   items: PlaceOrderItem[];
+  walkIn: boolean; // made by staff at the counter (S5); the server checks they are signed in
 };
 
 export type PlaceOrderResult = { ok: true; order: Order } | { ok: false; error: string };
@@ -75,5 +76,10 @@ export function parsePlaceOrderInput(raw: unknown): PlaceOrderInput | null {
       lamination: i.lamination,
     });
   }
-  return { customer: { name: c.name, phone: c.phone, email: c.email, consent: c.consent }, batch: raw.batch, items };
+  return {
+    customer: { name: c.name, phone: c.phone, email: c.email, consent: c.consent },
+    batch: raw.batch,
+    items,
+    walkIn: raw.walkIn === true,
+  };
 }

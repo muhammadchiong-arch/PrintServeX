@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { formatDuration, formatPeso, formatTime, toDayKey } from "@/lib/format";
 import { amountDue } from "@/lib/orders";
 import { PageTitle, Panel } from "./parts";
-import { staffNow, useStaff } from "./StaffStore";
+import { useStaff } from "./StaffStore";
 
 type Stat = { label: string; value: string; note: string; icon: LucideIcon; color: string };
 
@@ -18,7 +18,7 @@ const minutesSince = (iso: string, now: Date) => (now.getTime() - Date.parse(iso
 
 export function Dashboard() {
   const { orders, inventory, activity } = useStaff();
-  const now = staffNow();
+  const now = new Date();
   const today = toDayKey(now.toISOString());
   const yesterday = toDayKey(new Date(now.getTime() - 86_400_000).toISOString());
 
@@ -145,11 +145,13 @@ export function Dashboard() {
 
           <Panel title="Recent activity" className="pb-2">
             <ul className="pt-2">
+              {activity.length === 0 && <li className="px-5 py-2 text-[13px] text-slate">Nothing yet.</li>}
               {activity.slice(0, 5).map((a) => (
                 <li key={`${a.at}-${a.details}`} className="flex gap-2.5 px-5 py-2 text-[13px] leading-[18px]">
                   <span aria-hidden className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[#cbd5e1]" />
                   <span className="flex-1">
-                    <b className="font-semibold">{a.who.split(" ")[0]}</b> · {a.action.toLowerCase()}: {a.details}
+                    <b className="font-semibold">{a.who.split(" ")[0]}</b> · {a.action.toLowerCase()}
+                    {a.details && `: ${a.details}`}
                   </span>
                   <span className="whitespace-nowrap text-slate">{formatTime(a.at)}</span>
                 </li>

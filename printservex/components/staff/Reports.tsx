@@ -7,10 +7,10 @@ import { Tabs } from "@/components/ui/Tabs";
 import { useToast } from "@/components/ui/Toast";
 import { formatDate, formatDuration, formatPeso, toDayKey } from "@/lib/format";
 import { amountDue, type Order } from "@/lib/orders";
-import type { InventoryItem } from "@/lib/sample/staff";
+import type { InventoryItem } from "@/lib/staff-types";
 import { ORDER_STATUSES, STATUS_LABELS } from "@/lib/status";
 import { PageTitle } from "./parts";
-import { staffNow, useStaff } from "./StaffStore";
+import { useStaff } from "./StaffStore";
 
 type ReportType = "Sales" | "Orders" | "Inventory";
 type Report = { title: string; kpis: [string, string][]; cols: string[]; rows: string[][] };
@@ -103,10 +103,10 @@ const dateInput = "h-9 w-40 rounded-lg border border-border px-3 text-sm focus:b
 export function Reports() {
   const { orders, inventory } = useStaff();
   const toast = useToast();
-  const today = toDayKey(staffNow().toISOString());
+  const today = toDayKey(new Date().toISOString());
   const [type, setType] = useState<ReportType>("Sales");
   // Default range: the last 30 days
-  const [from, setFrom] = useState(() => toDayKey(new Date(staffNow().getTime() - 29 * 86_400_000).toISOString()));
+  const [from, setFrom] = useState(() => toDayKey(new Date(new Date().getTime() - 29 * 86_400_000).toISOString()));
   const [to, setTo] = useState(today);
   const badRange = !from || !to || from > to;
 

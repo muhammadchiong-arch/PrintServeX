@@ -40,19 +40,22 @@ Next.js (App Router) + TypeScript + Tailwind CSS + Supabase.
 3. `supabase/003_orders.sql` – order numbers, saving orders, file bucket
 4. `supabase/005_staff_login.sql` – sign-in lock and last sign-in
 5. `supabase/005b_first_admin.sql` – the shop owner's account (read the steps at the top first)
+6. `supabase/006_staff_work.sql` – staff actions: order status, payments, final price, stock, temporary passwords
+
+After that, sign in as the owner and add the other staff on the Users page.
 
 Also: Authentication → Sign In / Providers → turn OFF "Allow new users to sign up".
 Staff accounts are only made by the owner, never by sign-up.
 
-## What is real and what is sample data
+## What is real
 
-- **Real (Supabase):** paper sizes, paper types and prices (home page, order form, walk-in, pricing page),
-  customer orders and tracking, and staff sign-in (every `/staff` page needs an active staff account).
-- **Sample data (staff pages):** orders, customers, inventory, other staff users and the audit log (`lib/sample/`).
-  Staff pages share them through `components/staff/StaffStore.tsx`, so a change on one page shows on the others.
-  Reloading the page resets them. Orders placed on `/order` are kept in the browser tab (sessionStorage).
-- Next step: create the `orders`, `order_items`, `inventory`, `staff` tables and replace each action in
-  `StaffStore.tsx` / `lib/customer-orders.ts` with a Supabase call.
+- **Customer side:** prices, placing orders with file uploads, tracking.
+- **Staff portal:** sign-in, orders (status, cancel, payment, final price, remarks, file downloads),
+  walk-in orders, customers, inventory, reports, users (add, reset password, deactivate),
+  profile password and the audit log. No sample data: everything comes from Supabase and
+  starts empty. Data loads in the portal layout (`lib/staff-data.ts`), every change is a
+  Server Action in `lib/staff-actions.ts`, and the portal reloads its data every minute.
+- **Not saved yet:** edits on Pricing & options and Settings → Shop info (the pages say so).
 
 ## Where things are
 

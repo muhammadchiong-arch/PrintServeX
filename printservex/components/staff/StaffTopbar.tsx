@@ -26,18 +26,10 @@ export function StaffTopbar({ staffName, lowStockCount }: StaffTopbarProps) {
         />
       </form>
 
-      {/* Reminder that nothing is saved yet (remove when Supabase is connected) */}
-      <span
-        title="Changes are kept until you reload the page"
-        className="ml-auto rounded-full border border-dashed border-[#b9c6da] px-2.5 py-0.5 text-xs font-medium text-slate"
-      >
-        Sample data
-      </span>
-
       <Link
         href="/staff/inventory?filter=low"
         aria-label={lowStockCount > 0 ? `${lowStockCount} items low on stock` : "No low-stock items"}
-        className="relative flex size-9 items-center justify-center rounded-lg text-navy transition-colors duration-150 hover:bg-bg"
+        className="relative ml-auto flex size-9 items-center justify-center rounded-lg text-navy transition-colors duration-150 hover:bg-bg"
       >
         <Bell size={20} aria-hidden />
         {lowStockCount > 0 && (

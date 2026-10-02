@@ -35,6 +35,7 @@ export async function trackOrder(refInput: string, codeInput: string): Promise<T
       customer: { name: order.customer.name, phone: `•••• ${last4}` },
       remarks: undefined,
       history: order.history.map((h) => ({ ...h, by: "" })), // staff names stay private
+      payment: order.payment && { ...order.payment, by: "" },
     },
   };
 }

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import type { InventoryItem } from "@/lib/sample/staff";
+import type { InventoryItem } from "@/lib/staff-types";
 import { useStaff } from "../StaffStore";
 
 export type StockAction = { item: InventoryItem; type: "in" | "out" } | null;
@@ -17,6 +17,7 @@ export function StockModal({ action, onClose }: { action: StockAction; onClose: 
   const [qty, setQty] = useState("");
   const [note, setNote] = useState("");
   const [tried, setTried] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const close = () => {
     setQty("");
@@ -44,10 +45,14 @@ export function StockModal({ action, onClose }: { action: StockAction; onClose: 
           </Button>
           <Button
             size="md"
-            onClick={() => {
+            disabled={saving}
+            onClick={async () => {
               setTried(true);
               if (qtyError) return;
-              moveStock(item.id, type, n, note.trim() || (type === "in" ? "Delivery" : "Used"));
+              setSaving(true);
+              const saved = await moveStock(item.id, type, n, note.trim() || (type === "in" ? "Delivery" : "Used"));
+              setSaving(false);
+              if (!saved) return;
               toast({ message: `${item.name} updated to ${type === "in" ? item.qty + n : item.qty - n} ${item.unit}.` });
               close();
             }}
@@ -76,6 +81,7 @@ export function AddItemModal({ open, onClose }: { open: boolean; onClose: () => 
   const toast = useToast();
   const [f, setF] = useState({ name: "", unit: "", qty: "0", reorder: "" });
   const [tried, setTried] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const errors = {
     name: f.name.trim() ? undefined : "Enter the item name.",
@@ -102,10 +108,14 @@ export function AddItemModal({ open, onClose }: { open: boolean; onClose: () => 
           </Button>
           <Button
             size="md"
-            onClick={() => {
+            disabled={saving}
+            onClick={async () => {
               setTried(true);
               if (Object.values(errors).some(Boolean)) return;
-              addItem({ name: f.name.trim(), unit: f.unit.trim(), qty: Number(f.qty), reorderLevel: Number(f.reorder) });
+              setSaving(true);
+              const saved = await addItem({ name: f.name.trim(), unit: f.unit.trim(), qty: Number(f.qty), reorderLevel: Number(f.reorder) });
+              setSaving(false);
+              if (!saved) return;
               toast({ message: `${f.name.trim()} added.` });
               close();
             }}
