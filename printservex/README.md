@@ -19,7 +19,7 @@ Next.js (App Router) + TypeScript + Tailwind CSS + Supabase.
 | C1 Home (live price list from Supabase) | `/` |
 | C2 New order (3 steps, live price) | `/order` |
 | C3 Confirmation | `/order/confirmation?ref=…` |
-| C4 Track order / C5 Order status | `/track` (try PSX-20261001-0042 + 1953) |
+| C4 Track order / C5 Order status | `/track` (looks up real orders on the server) |
 | S1 Staff login (UI only) | `/staff/login` |
 | S2 Dashboard | `/staff/dashboard` |
 | S3 Orders / S4 Order detail | `/staff/orders`, `/staff/orders/PSX-20261001-0042` |

@@ -1,47 +1,51 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { SearchX } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { findOrder } from "@/lib/customer-orders";
-import { useIsClient } from "@/lib/use-is-client";
+import { REF_PATTERN } from "@/lib/orders";
 import { SHOP } from "@/lib/shop";
+import type { TrackResult } from "@/lib/track";
 import { OrderStatusView } from "./OrderStatusView";
+
+type TrackOrderProps = {
+  // The server's answer for the ref + code in the URL (null = nothing searched yet)
+  result: TrackResult | null;
+  initialRef: string;
+  initialCode: string;
+};
 
 /**
  * /track            → C4 form
- * /track?ref=…&code=1953 → looks up the order and shows C5 (or the form with an error)
+ * /track?ref=…&code=1953 → the server looks up the order and this shows C5 (or the form with an error)
  * Keeping the lookup in the URL means a refresh keeps the status page open.
  */
-export function TrackOrder() {
-  const params = useSearchParams();
+export function TrackOrder({ result, initialRef, initialCode }: TrackOrderProps) {
   const router = useRouter();
-  const urlRef = params.get("ref") ?? "";
-  const urlCode = params.get("code") ?? "";
-
-  const [ref, setRef] = useState(urlRef);
-  const [code, setCode] = useState(urlCode);
+  const [ref, setRef] = useState(initialRef);
+  const [code, setCode] = useState(initialCode);
   const [formatError, setFormatError] = useState(false);
-  const isClient = useIsClient();
+  // true while the server is looking up the order
+  const [checking, startChecking] = useTransition();
 
-  // Orders placed in this browser are kept in sessionStorage, which only exists in the browser
-  if (urlRef && urlCode && !isClient) return <div aria-busy="true" className="h-96 animate-pulse rounded-xl bg-surface" />;
-  const result = urlRef && urlCode ? findOrder(urlRef, urlCode) : null;
   if (result?.ok) return <OrderStatusView order={result.order} />;
 
-  const notFound = result && !result.ok;
+  const notFound = result?.ok === false && result.error !== "unavailable";
+  const unavailable = result?.ok === false && result.error === "unavailable";
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const check = findOrder(ref, code);
-    if (!check.ok && check.error === "format") {
+    const cleanRef = ref.trim().toUpperCase();
+    const cleanCode = code.replace(/\D/g, "");
+    if (!REF_PATTERN.test(cleanRef) || cleanCode.length !== 4) {
       setFormatError(true);
       return;
     }
     setFormatError(false);
-    router.push(`/track?ref=${encodeURIComponent(ref.trim().toUpperCase())}&code=${code.replace(/\D/g, "")}`);
+    // The page reloads with the new URL and the server does the lookup
+    startChecking(() => router.push(`/track?ref=${encodeURIComponent(cleanRef)}&code=${cleanCode}`));
   };
 
   return (
@@ -56,6 +60,14 @@ export function TrackOrder() {
           <SearchX size={20} aria-hidden className="shrink-0" />
           <span>
             <b>No matching order.</b> Check both entries and try again, or call the shop at {SHOP.phone}.
+          </span>
+        </p>
+      )}
+      {unavailable && (
+        <p role="alert" className="flex gap-2 rounded-lg bg-cancelled-tint p-3 text-sm text-cancelled">
+          <SearchX size={20} aria-hidden className="shrink-0" />
+          <span>
+            <b>We can&apos;t check orders right now.</b> Please try again in a few minutes, or call the shop at {SHOP.phone}.
           </span>
         </p>
       )}
@@ -84,8 +96,8 @@ export function TrackOrder() {
           invalid={Boolean(notFound)}
         />
       </div>
-      <Button type="submit" className="active:scale-[0.97]">
-        Check status
+      <Button type="submit" disabled={checking} className="active:scale-[0.97]">
+        {checking ? "Checking…" : "Check status"}
       </Button>
     </form>
   );

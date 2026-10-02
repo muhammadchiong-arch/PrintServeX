@@ -2,14 +2,13 @@
 // submitOrder() uploads the files to Supabase Storage and asks the SERVER to save the order;
 // the server calculates the price and the reference number.
 // The saved order is also kept in this browser tab (sessionStorage) so the confirmation page
-// can show it. Tracking (findOrder) still uses this tab + sample data until step 5.
+// can show it right away. Tracking (/track) reads the order from the database on the server.
 
 import type { OrderFile } from "@/components/order/types";
 import { contentTypeFor } from "@/lib/files";
 import { prepareUploads, placeOrder } from "@/lib/order-actions";
-import { normalizePhone, type CustomerDetails } from "@/lib/order-details";
-import { REF_PATTERN, type Order } from "@/lib/orders";
-import { SAMPLE_ORDERS } from "@/lib/sample/orders";
+import type { CustomerDetails } from "@/lib/order-details";
+import type { Order } from "@/lib/orders";
 import { supabase } from "@/lib/supabase";
 
 const KEY = "psx-orders";
@@ -69,18 +68,3 @@ export function getSavedOrder(ref: string): Order | undefined {
   return readSaved().find((o) => o.ref === ref);
 }
 
-export type LookupResult = { ok: true; order: Order } | { ok: false; error: "format" | "not_found" };
-
-/**
- * Business rule: a customer sees an order only if BOTH the reference number
- * and the last 4 digits of the contact number match (no login needed).
- */
-export function findOrder(refInput: string, last4Input: string): LookupResult {
-  const ref = refInput.trim().toUpperCase();
-  const last4 = last4Input.replace(/\D/g, "");
-  if (!REF_PATTERN.test(ref) || last4.length !== 4) return { ok: false, error: "format" };
-
-  const order = [...readSaved(), ...SAMPLE_ORDERS].find((o) => o.ref === ref);
-  if (!order || !normalizePhone(order.customer.phone).endsWith(last4)) return { ok: false, error: "not_found" };
-  return { ok: true, order };
-}
