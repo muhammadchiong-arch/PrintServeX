@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Stepper } from "@/components/ui/Stepper";
+import { useToast } from "@/components/ui/Toast";
 import { checkFile, readPageCount } from "@/lib/files";
 import { EMPTY_DETAILS, validateDetails, type CustomerDetails, type DetailsErrors } from "@/lib/order-details";
 import { priceOrder, type PriceRule, type PrintOptions } from "@/lib/price";
@@ -19,7 +20,8 @@ type OrderWizardProps = Catalog & {
   rules: PriceRule[];
   // "customer" = full-page form at /order · "staff" = Walk-in order inside the staff portal
   variant: "customer" | "staff";
-  onSubmit: (draft: OrderDraft) => void;
+  // Saves the order. Returns an error message to show, or null when it worked.
+  onSubmit: (order: { draft: OrderDraft; details: CustomerDetails; files: OrderFile[] }) => Promise<string | null>;
 };
 
 const STAFF_STEPS = ["Customer", "Files & options", "Review"];
@@ -36,6 +38,7 @@ export function OrderWizard({ sizes, types, rules, variant, onSubmit }: OrderWiz
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [submitting, setSubmitting] = useState(false);
+  const toast = useToast();
   const [details, setDetails] = useState<CustomerDetails>(EMPTY_DETAILS);
   const [detailsErrors, setDetailsErrors] = useState<DetailsErrors>({});
   const [files, setFiles] = useState<OrderFile[]>([]);
@@ -144,9 +147,14 @@ export function OrderWizard({ sizes, types, rules, variant, onSubmit }: OrderWiz
     headingRef.current?.focus();
   }, [step]);
 
-  const submit = () => {
+  const submit = async () => {
     setSubmitting(true); // stops a double tap from sending the order twice
-    onSubmit(buildOrderDraft(details, readyFiles, catalog, rules));
+    const error = await onSubmit({ draft: buildOrderDraft(details, readyFiles, catalog, rules), details, files: readyFiles });
+    if (error) {
+      // Nothing was saved: let the customer try again
+      setSubmitting(false);
+      toast({ kind: "error", message: error });
+    }
   };
 
   const actions: SummaryAction[] = [

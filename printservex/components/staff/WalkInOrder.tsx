@@ -18,10 +18,12 @@ export function WalkInOrder(props: Catalog & { rules: PriceRule[] }) {
     <OrderWizard
       {...props}
       variant="staff"
-      onSubmit={(draft) => {
+      // Still sample data: walk-in orders move to Supabase in step 7
+      onSubmit={async ({ draft }) => {
         const ref = addWalkInOrder(draft);
         toast({ message: `Walk-in order ${ref} created.` });
         router.replace(`/staff/orders/${ref}`);
+        return null;
       }}
     />
   );

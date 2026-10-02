@@ -5,19 +5,32 @@ const MAX_BYTES = UPLOAD_RULES.maxFileMb * 1024 * 1024;
 
 const extensionOf = (name: string) => name.split(".").pop()?.toLowerCase() ?? "";
 
-// Checks one file. Returns an error message, or null if the file is OK.
-export function checkFile(file: File): string | null {
-  if (!ALLOWED_EXTENSIONS.includes(extensionOf(file.name))) {
-    return `${file.name} can't be printed. Upload ${UPLOAD_RULES.fileTypes.slice(0, -1).join(", ")} or ${UPLOAD_RULES.fileTypes.at(-1)}.`;
+// Checks one file by its name and size. The browser AND the server use this same rule.
+// Returns an error message, or null if the file is OK.
+export function checkFileMeta(name: string, size: number): string | null {
+  if (!ALLOWED_EXTENSIONS.includes(extensionOf(name))) {
+    return `${name} can't be printed. Upload ${UPLOAD_RULES.fileTypes.slice(0, -1).join(", ")} or ${UPLOAD_RULES.fileTypes.at(-1)}.`;
   }
-  if (file.size > MAX_BYTES) {
-    return `${file.name} is ${formatFileSize(file.size)}. Files must be ${UPLOAD_RULES.maxFileMb} MB or smaller.`;
+  if (size > MAX_BYTES) {
+    return `${name} is ${formatFileSize(size)}. Files must be ${UPLOAD_RULES.maxFileMb} MB or smaller.`;
   }
-  if (file.size === 0) {
-    return `${file.name} is empty. Please choose another file.`;
+  if (size <= 0) {
+    return `${name} is empty. Please choose another file.`;
   }
   return null;
 }
+
+export const checkFile = (file: File): string | null => checkFileMeta(file.name, file.size);
+
+// The file type sent to Storage. Set from the extension, because some phones leave it empty.
+const CONTENT_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+};
+export const contentTypeFor = (name: string): string => CONTENT_TYPES[extensionOf(name)] ?? "application/octet-stream";
 
 // 3_250_000 → "3.1 MB", 48_000 → "47 KB"
 export function formatFileSize(bytes: number): string {
