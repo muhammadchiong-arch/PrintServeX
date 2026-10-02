@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { useToast } from "@/components/ui/Toast";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Stepper } from "@/components/ui/Stepper";
 import { checkFile, readPageCount } from "@/lib/files";
 import { EMPTY_DETAILS, validateDetails, type CustomerDetails, type DetailsErrors } from "@/lib/order-details";
 import { priceOrder, type PriceRule, type PrintOptions } from "@/lib/price";
@@ -12,18 +12,30 @@ import { FilesStep } from "./FilesStep";
 import { OrderHeader } from "./OrderHeader";
 import { MobileOrderBar, PriceSummary, type SummaryAction } from "./PriceSummary";
 import { ReviewStep } from "./ReviewStep";
+import { buildOrderDraft, type OrderDraft } from "./build-order";
 import { STEPS, type Catalog, type OrderFile } from "./types";
 
-type OrderWizardProps = Catalog & { rules: PriceRule[] };
+type OrderWizardProps = Catalog & {
+  rules: PriceRule[];
+  // "customer" = full-page form at /order · "staff" = Walk-in order inside the staff portal
+  variant: "customer" | "staff";
+  onSubmit: (draft: OrderDraft) => void;
+};
+
+const STAFF_STEPS = ["Customer", "Files & options", "Review"];
 
 /**
- * The 3-step new order form. Everything stays in the browser for now (nothing is saved).
+ * The 3-step new order form, used by customers (C2) and by staff for walk-ins (S5).
  * Steps: 0 = Your details, 1 = Files & options, 2 = Review.
  */
-export function OrderWizard({ sizes, types, rules }: OrderWizardProps) {
+export function OrderWizard({ sizes, types, rules, variant, onSubmit }: OrderWizardProps) {
   const catalog = useMemo(() => ({ sizes, types }), [sizes, types]);
-  const toast = useToast();
+  const isStaff = variant === "staff";
+  // Business rule: customers must accept the privacy notice; staff ask walk-in customers in person
+  const rulesOpt = { requireConsent: !isStaff };
+  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [submitting, setSubmitting] = useState(false);
   const [details, setDetails] = useState<CustomerDetails>(EMPTY_DETAILS);
   const [detailsErrors, setDetailsErrors] = useState<DetailsErrors>({});
   const [files, setFiles] = useState<OrderFile[]>([]);
@@ -48,7 +60,7 @@ export function OrderWizard({ sizes, types, rules }: OrderWizardProps) {
   // ---------- Moving between steps ----------
   // The step lives in the URL (/order?step=2), so the phone's Back button goes to the previous step.
   // goTo() adds a history entry; Next.js updates useSearchParams when the URL changes.
-  const goTo = (next: number) => window.history.pushState(null, "", next === 0 ? "/order" : `/order?step=${next}`);
+  const goTo = (next: number) => window.history.pushState(null, "", next === 0 ? pathname : `${pathname}?step=${next}`);
 
   // ---------- Files ----------
   const updateFile = (id: string, patch: Partial<OrderFile>) =>
@@ -97,7 +109,7 @@ export function OrderWizard({ sizes, types, rules }: OrderWizardProps) {
 
   // ---------- Main button for each step ----------
   const continueFromDetails = () => {
-    const errors = validateDetails(details);
+    const errors = validateDetails(details, rulesOpt);
     setDetailsErrors(errors);
     const firstBad = (["name", "phone", "email"] as const).find((k) => errors[k]);
     if (firstBad) {
@@ -119,7 +131,7 @@ export function OrderWizard({ sizes, types, rules }: OrderWizardProps) {
   // Business rule: a step can only be shown once the steps before it are complete
   // (e.g. after a page refresh the browser forgets the form, so we go back to step 1)
   const requested = Number(searchParams.get("step") ?? 0);
-  const detailsDone = Object.keys(validateDetails(details)).length === 0;
+  const detailsDone = Object.keys(validateDetails(details, rulesOpt)).length === 0;
   const step = !detailsDone || requested < 1 ? 0 : requested >= 2 && !filesHint ? 2 : 1;
 
   // After a step change: scroll to the top and move keyboard/screen-reader focus to the new title
@@ -132,17 +144,73 @@ export function OrderWizard({ sizes, types, rules }: OrderWizardProps) {
     headingRef.current?.focus();
   }, [step]);
 
+  const submit = () => {
+    setSubmitting(true); // stops a double tap from sending the order twice
+    onSubmit(buildOrderDraft(details, readyFiles, catalog, rules));
+  };
+
   const actions: SummaryAction[] = [
-    { label: "Continue to files", onClick: continueFromDetails, disabled: !details.consent, hint: "Check the privacy box to continue." },
-    { label: "Review order", onClick: () => goTo(2), disabled: Boolean(filesHint), hint: filesHint },
     {
-      label: "Submit order",
-      // Saving the order to Supabase comes with C3 Confirmation
-      onClick: () => toast({ message: "Saving orders isn't connected yet. It will be added with the confirmation screen." }),
-      disabled: false,
+      label: "Continue to files",
+      onClick: continueFromDetails,
+      disabled: !isStaff && !details.consent,
+      hint: "Check the privacy box to continue.",
     },
+    { label: "Review order", onClick: () => goTo(2), disabled: Boolean(filesHint), hint: filesHint },
+    { label: submitting ? "Submitting…" : isStaff ? "Create order" : "Submit order", onClick: submit, disabled: submitting },
   ];
   const back = step === 1 ? { label: "Back to details", onClick: () => window.history.back() } : step === 2 ? { label: "Back to files", onClick: () => window.history.back() } : undefined;
+
+  const stepContent = (
+    <>
+      {step === 0 && (
+        <DetailsStep
+          variant={variant}
+          details={details}
+          errors={detailsErrors}
+          onChange={(patch) => {
+            setDetails((d) => ({ ...d, ...patch }));
+            // Clear an error as soon as the customer fixes that field
+            setDetailsErrors((e) => {
+              const next = { ...e };
+              for (const k of Object.keys(patch) as (keyof CustomerDetails)[]) delete next[k];
+              return next;
+            });
+          }}
+        />
+      )}
+      {step === 1 && (
+        <FilesStep
+          files={files}
+          errors={fileErrors}
+          catalog={catalog}
+          rules={rules}
+          onAddFiles={addFiles}
+          onChangeFile={changeFileOptions}
+          onRemoveFile={removeFile}
+        />
+      )}
+      {step === 2 && <ReviewStep details={details} files={readyFiles} totals={totals} catalog={catalog} rules={rules} onEdit={goTo} />}
+    </>
+  );
+
+  // Staff: compact version inside the staff layout (desktop only, no phone header or bottom bar)
+  if (isStaff) {
+    return (
+      <>
+        <div className="flex items-center justify-between gap-8">
+          <h1 ref={headingRef} tabIndex={-1} className="text-2xl outline-none">
+            Walk-in order
+          </h1>
+          <Stepper steps={STAFF_STEPS} current={step} className="w-[520px]" />
+        </div>
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="flex flex-col gap-3">{stepContent}</div>
+          <PriceSummary compact files={files} totals={totals} rules={rules} primary={actions[step]} back={back} />
+        </div>
+      </>
+    );
+  }
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -157,34 +225,7 @@ export function OrderWizard({ sizes, types, rules }: OrderWizardProps) {
           >
             {STEPS[step]}
           </h1>
-
-          {step === 0 && (
-            <DetailsStep
-              details={details}
-              errors={detailsErrors}
-              onChange={(patch) => {
-                setDetails((d) => ({ ...d, ...patch }));
-                // Clear an error as soon as the customer fixes that field
-                setDetailsErrors((e) => {
-                  const next = { ...e };
-                  for (const k of Object.keys(patch) as (keyof CustomerDetails)[]) delete next[k];
-                  return next;
-                });
-              }}
-            />
-          )}
-          {step === 1 && (
-            <FilesStep
-              files={files}
-              errors={fileErrors}
-              catalog={catalog}
-              rules={rules}
-              onAddFiles={addFiles}
-              onChangeFile={changeFileOptions}
-              onRemoveFile={removeFile}
-            />
-          )}
-          {step === 2 && <ReviewStep details={details} files={readyFiles} totals={totals} catalog={catalog} rules={rules} onEdit={goTo} />}
+          {stepContent}
         </div>
 
         <PriceSummary files={files} totals={totals} rules={rules} primary={actions[step]} back={back} />

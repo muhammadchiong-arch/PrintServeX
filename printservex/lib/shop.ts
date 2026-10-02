@@ -8,6 +8,9 @@ export const SHOP = {
   hours: "Mon to Sat, 8:00 AM to 7:00 PM",
   hoursLong: "Monday to Saturday, 8:00 AM to 7:00 PM",
   usualTurnaround: "within 2 hours",
+  email: "hello@printservex.ph",
+  // Shown on the customer's order status page when the order is ready
+  pickupNote: "Bring your reference number. Counter 2, open until 7:00 PM.",
 } as const;
 
 // Business rules for uploads (also used by the order form in C2)
