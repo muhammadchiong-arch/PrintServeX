@@ -4,9 +4,9 @@ import type { PriceRule } from "@/lib/price";
 // ⚠ If your Supabase column names are different, change them here only.
 const COLUMNS = {
   sizeName: "name", // paper_sizes
-  sizeDimensions: "dimensions", // paper_sizes (optional, e.g. "8.5 × 11 in")
+  sizeDimensions: "dimensions", // paper_sizes (optional column, not in your table yet)
   typeName: "name", // paper_types
-  ruleSizeId: "paper_size_id", // price_rules → paper_sizes.id
+  ruleSizeId: "size_id", // price_rules → paper_sizes.id
   ruleTypeId: "paper_type_id", // price_rules → paper_types.id
   ruleColorMode: "color_mode", // price_rules: "bw" or "color"
   rulePrice: "price_per_page", // price_rules: peso amount
@@ -38,10 +38,11 @@ const num = (row: DbRow, col: string): number | null => {
  * Returns null if Supabase can't be reached, so pages can show an error message.
  */
 export async function getPricingData(): Promise<PricingData | null> {
-  // 3 simple reads, joined in code (works without foreign keys set up)
+  // 3 simple reads, joined in code. Sorted by created_at (ids are random uuids), so options
+  // show in the order they were added. RLS only lets the public key see active rows.
   const [sizes, types, rules] = await Promise.all([
-    supabase.from("paper_sizes").select("*").order("id"),
-    supabase.from("paper_types").select("*").order("id"),
+    supabase.from("paper_sizes").select("*").order("created_at"),
+    supabase.from("paper_types").select("*").order("created_at"),
     supabase.from("price_rules").select("*"),
   ]);
 
