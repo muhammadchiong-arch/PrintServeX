@@ -7,7 +7,7 @@ import { submitOrder } from "@/lib/customer-orders";
 import type { Prices } from "@/lib/price";
 import type { Catalog } from "@/components/order/types";
 
-// S5: the same 3 steps as the customer form (C2), inside the staff layout.
+// S5: the same 4 steps as the customer form (C2), inside the staff layout.
 // On "Create order" the files are uploaded and the order is saved (same checks as online
 // orders, priced on the server), then its detail page opens.
 export function WalkInOrder(props: Catalog & { prices: Prices }) {
