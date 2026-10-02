@@ -10,21 +10,23 @@ import { ToggleChip } from "@/components/ui/ToggleChip";
 import { formatFileSize, isImage } from "@/lib/files";
 import { formatPeso } from "@/lib/format";
 import type { AddOns, FilePrice, PrintOptions } from "@/lib/price";
-import type { Catalog, OrderFile } from "./types";
+import type { LineDetails } from "@/lib/services";
+import type { Catalog, OrderLine } from "./types";
 
 type FileCardProps = {
-  item: OrderFile;
+  item: OrderLine & { file: File }; // a Document Printing line always has a file
   price: FilePrice | null; // null = this combination isn't offered
   addOns: AddOns; // null = not offered right now
   catalog: Catalog;
   onChange: (patch: Partial<PrintOptions>) => void;
+  onDetails: (patch: Partial<LineDetails>) => void;
   onRemove: () => void;
 };
 
 const MAX_PAGES = 2000;
 
-// One uploaded file with all its print options
-export function FileCard({ item, price, addOns, catalog, onChange, onRemove }: FileCardProps) {
+// One uploaded document with all its print options
+export function FileCard({ item, price, addOns, catalog, onChange, onDetails, onRemove }: FileCardProps) {
   const o = item.options;
   const Icon = isImage(item.file.name) ? ImageIcon : FileText;
   // The Pages box keeps its own text so the customer can clear it and type a new number
@@ -99,8 +101,20 @@ export function FileCard({ item, price, addOns, catalog, onChange, onRemove }: F
         <NumberStepper label="Copies" value={o.copies} onChange={(copies) => onChange({ copies })} />
       </div>
 
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+        <div className="w-[220px] max-w-full">
+          <SegmentedControl
+            label="Sides"
+            value={item.details.sides ?? "single"}
+            onChange={(sides) => onDetails({ sides })}
+            options={[
+              { value: "single", label: "Single" },
+              { value: "double", label: "Double" },
+            ]}
+          />
+        </div>
       {(addOns.binding || addOns.lamination) && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 pb-0.5">
           <span className="mr-1 text-sm font-medium max-lg:sr-only">Add-ons</span>
           {addOns.binding && (
             <ToggleChip pressed={o.binding} onToggle={() => onChange({ binding: !o.binding })}>
@@ -114,6 +128,7 @@ export function FileCard({ item, price, addOns, catalog, onChange, onRemove }: F
           )}
         </div>
       )}
+      </div>
 
       {/* An add-on the shop stopped offering while this form was open */}
       {((o.binding && !addOns.binding) || (o.lamination && !addOns.lamination)) && (

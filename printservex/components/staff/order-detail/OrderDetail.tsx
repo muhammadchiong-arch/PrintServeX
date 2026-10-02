@@ -10,7 +10,8 @@ import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
 import { formatDate, formatDateTime, formatPeso, formatPhone, formatTime } from "@/lib/format";
-import { amountDue, canCancel, estimatedTotal, itemAddOns, itemPrinting, NEXT_STATUS, PAYMENT_LABELS, type Order } from "@/lib/orders";
+import { amountDue, canCancel, estimatedTotal, isQuote, itemAddOns, itemPrinting, itemTotal, NEXT_STATUS, PAYMENT_LABELS, quoteCount, type Order, type OrderItem } from "@/lib/orders";
+import { areaSqFt, BACKGROUND_LABELS } from "@/lib/services";
 import { getFileLink } from "@/lib/staff-actions";
 import { STATUS_LABELS, type OrderStatus } from "@/lib/status";
 import { BackLink, CardLabel } from "../parts";
@@ -103,45 +104,7 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
         <div className="flex flex-col gap-4">
           {order.items.map((i, index) => (
-            <article key={i.fileName} className="grid grid-cols-[150px_minmax(0,1fr)] gap-5 rounded-xl bg-surface p-4 shadow-card">
-              {/* No page previews yet: open the file with Download */}
-              <div className="flex h-[196px] items-center justify-center rounded-lg border border-border bg-[repeating-linear-gradient(135deg,#f6f8fb_0_8px,#ecf0f5_8px_16px)] p-2 text-center font-mono text-[11px] text-slate">
-                page 1 preview
-              </div>
-              <div className="flex flex-col gap-3">
-                <div className="flex items-start gap-3">
-                  <div className="min-w-0 flex-1">
-                    <h2 className="truncate font-sans text-[15px] font-semibold">{i.fileName}</h2>
-                    <p className="text-[13px] text-slate">
-                      {i.pages} {i.pages === 1 ? "page" : "pages"} · {i.fileSize}
-                    </p>
-                  </div>
-                  <DownloadButton orderRef={order.ref} position={index + 1} fileName={i.fileName} />
-                </div>
-                <dl className="grid grid-cols-3 gap-x-4 gap-y-3 text-sm">
-                  {[
-                    ["Paper size", i.size],
-                    ["Paper type", i.paper],
-                    ["Print", i.color ? "Color" : "B&W"],
-                    ["Pages", String(i.pages)],
-                    ["Copies", String(i.copies)],
-                    ["Add-ons", [i.binding && "Binding", i.lamination && "Lamination"].filter(Boolean).join(", ") || "None"],
-                  ].map(([k, v]) => (
-                    <div key={k} className="flex flex-col gap-0.5">
-                      <dt className="text-xs text-slate">{k}</dt>
-                      <dd className="font-medium">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
-                <div className="mt-auto flex justify-between border-t border-border pt-3 text-sm">
-                  <span className="text-slate">
-                    {i.pages} pp × {i.copies} × {formatPeso(i.rate)}
-                    {itemAddOns(i) > 0 && ` + add-ons ${formatPeso(itemAddOns(i))}`}
-                  </span>
-                  <span className="tabular font-semibold">{formatPeso(itemPrinting(i) + itemAddOns(i))}</span>
-                </div>
-              </div>
-            </article>
+            <ItemCard key={`${index}-${i.fileName ?? i.serviceName}`} item={i} orderRef={order.ref} position={index + 1} />
           ))}
         </div>
 
@@ -222,8 +185,11 @@ function PriceCard({ order, locked }: { order: Order; locked: boolean }) {
   const toast = useToast();
   const estimate = estimatedTotal(order);
   const printing = order.items.reduce((s, i) => s + itemPrinting(i), 0);
-  const bindingSets = order.items.filter((i) => i.binding).reduce((s, i) => s + i.copies, 0);
+  const bindingSets = order.items.filter((i) => i.binding).reduce((s, i) => s + (i.copies ?? 0), 0);
   const addOns = order.items.reduce((s, i) => s + itemAddOns(i), 0);
+  // Non-document services with a price (binding service, photos, design, ...)
+  const otherServices = order.items.filter((i) => i.kind !== "document").reduce((s, i) => s + itemTotal(i), 0);
+  const toConfirm = quoteCount(order);
 
   const [amount, setAmount] = useState((order.final?.amount ?? estimate).toFixed(2));
   const [note, setNote] = useState(order.final?.note ?? "");
@@ -247,10 +213,21 @@ function PriceCard({ order, locked }: { order: Order; locked: boolean }) {
           <span className="tabular">{formatPeso(addOns)}</span>
         </div>
       )}
+      {otherServices > 0 && (
+        <div className="flex justify-between">
+          <span className="text-slate">Other services</span>
+          <span className="tabular">{formatPeso(otherServices)}</span>
+        </div>
+      )}
       <div className="flex justify-between border-t border-border pt-2">
         <span>Estimated</span>
         <span className="tabular font-semibold">{formatPeso(estimate)}</span>
       </div>
+      {toConfirm > 0 && !locked && (
+        <p className="rounded-lg bg-pending-tint px-3 py-2 text-xs">
+          {toConfirm} {toConfirm === 1 ? "item has" : "items have"} no price yet. Add {toConfirm === 1 ? "its" : "their"} cost to the final price below, with a note.
+        </p>
+      )}
 
       {locked ? (
         order.final && (
@@ -374,5 +351,90 @@ function DownloadButton({ orderRef, position, fileName }: { orderRef: string; po
       {loading ? "Opening…" : "Download"}
       <span className="sr-only"> {fileName}</span>
     </Button>
+  );
+}
+
+// One line of the order: the service, its options and its file (if any)
+function ItemCard({ item: i, orderRef, position }: { item: OrderItem; orderRef: string; position: number }) {
+  const d = i.details ?? {};
+  const area = i.kind === "large_format" ? areaSqFt(d) : null;
+  const fields: [string, string][] = (() => {
+    switch (i.kind) {
+      case "document":
+        return [
+          ["Paper size", i.size ?? "—"],
+          ["Paper type", i.paper ?? "—"],
+          ["Print", i.color ? "Color" : "B&W"],
+          ["Pages", String(i.pages ?? "—")],
+          ["Copies", String(i.copies ?? "—")],
+          ["Sides", d.sides === "double" ? "Double" : "Single"],
+          ["Add-ons", [i.binding && "Binding", i.lamination && "Lamination"].filter(Boolean).join(", ") || "None"],
+        ];
+      case "finishing":
+        return [["Paper size", d.sizeName ?? "—"], ["Quantity", String(i.quantity)]];
+      case "photo":
+        return [["Background", d.background ? BACKGROUND_LABELS[d.background] : "—"], ["Quantity", String(i.quantity)]];
+      case "design":
+        return [["Request", d.mode === "file" ? "Use customer's file" : "Design it for them"], ["Size", d.sizeText || "—"], ["Quantity", String(i.quantity)]];
+      case "large_format":
+        return [["Size", d.width !== undefined && d.height !== undefined ? `${d.width} × ${d.height} ${d.unit}` : "—"], ["Area", area !== null ? `${area} sq ft each` : "—"], ["Quantity", String(i.quantity)]];
+      case "custom":
+        return [["Size", d.sizeText || "—"], ["Quantity", String(i.quantity)]];
+      case "school_business":
+        return [["Paper size", d.sizeName ?? "—"], ["Print", d.color ? "Color" : "B&W"], ["Quantity", String(i.quantity)]];
+    }
+  })();
+
+  return (
+    <article className={cn("gap-5 rounded-xl bg-surface p-4 shadow-card", i.fileName ? "grid grid-cols-[150px_minmax(0,1fr)]" : "flex flex-col")}>
+      {/* No page previews yet: open the file with Download */}
+      {i.fileName && (
+        <div className="flex h-[196px] items-center justify-center rounded-lg border border-border bg-[repeating-linear-gradient(135deg,#f6f8fb_0_8px,#ecf0f5_8px_16px)] p-2 text-center font-mono text-[11px] text-slate">
+          page 1 preview
+        </div>
+      )}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.04em] text-slate">
+              {i.categoryName} · {i.serviceName}
+            </p>
+            <h2 className="truncate font-sans text-[15px] font-semibold">{i.fileName ?? i.serviceName}</h2>
+            <p className="text-[13px] text-slate">
+              {i.fileName
+                ? [i.kind === "document" && `${i.pages} ${i.pages === 1 ? "page" : "pages"}`, i.fileSize].filter(Boolean).join(" · ")
+                : "No file attached"}
+            </p>
+          </div>
+          {i.fileName && <DownloadButton orderRef={orderRef} position={position} fileName={i.fileName} />}
+        </div>
+        <dl className="grid grid-cols-3 gap-x-4 gap-y-3 text-sm">
+          {fields.map(([k, v]) => (
+            <div key={k} className="flex flex-col gap-0.5">
+              <dt className="text-xs text-slate">{k}</dt>
+              <dd className="font-medium">{v}</dd>
+            </div>
+          ))}
+        </dl>
+        {d.notes && (
+          <p className="whitespace-pre-line rounded-lg bg-bg px-3 py-2 text-sm">
+            <span className="text-xs text-slate">Customer notes: </span>
+            {d.notes}
+          </p>
+        )}
+        <div className="mt-auto flex justify-between border-t border-border pt-3 text-sm">
+          <span className="text-slate">
+            {i.kind === "document" && i.rate !== null
+              ? `${i.pages} pp × ${i.copies} × ${formatPeso(i.rate)}${itemAddOns(i) > 0 ? ` + add-ons ${formatPeso(itemAddOns(i))}` : ""}`
+              : `Quantity ${i.quantity}`}
+          </span>
+          {isQuote(i) ? (
+            <span className="rounded-full bg-pending-tint px-2 py-0.5 text-xs font-semibold text-pending">Price to be confirmed</span>
+          ) : (
+            <span className="tabular font-semibold">{formatPeso(itemTotal(i))}</span>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }

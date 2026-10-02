@@ -4,7 +4,7 @@
 // The saved order is also kept in this browser tab (sessionStorage) so the confirmation page
 // can show it right away. Tracking (/track) reads the order from the database on the server.
 
-import type { OrderFile } from "@/components/order/types";
+import type { Catalog, OrderLine } from "@/components/order/types";
 import { contentTypeFor } from "@/lib/files";
 import { prepareUploads, placeOrder } from "@/lib/order-actions";
 import type { CustomerDetails } from "@/lib/order-details";
@@ -27,29 +27,45 @@ export type SubmitResult = { ok: true; order: Order } | { ok: false; error: stri
 
 /**
  * Sends the order in 3 steps:
- * 1. the server checks the files and returns one-time upload links,
+ * 1. the server checks the files and returns one-time upload links (skipped if no line has a file),
  * 2. the browser uploads each file straight to Storage,
  * 3. the server checks everything again, calculates the price and saves the order.
  */
-export async function submitOrder(details: CustomerDetails, files: OrderFile[], opts: { walkIn?: boolean } = {}): Promise<SubmitResult> {
+export async function submitOrder(details: CustomerDetails, lines: OrderLine[], catalog: Catalog, opts: { walkIn?: boolean } = {}): Promise<SubmitResult> {
   try {
-    const prepared = await prepareUploads(files.map((f) => ({ name: f.file.name, size: f.file.size })));
-    if (!prepared.ok) return prepared;
+    const withFiles = lines.filter((l): l is OrderLine & { file: File } => l.file !== null);
+    const paths = new Map<string, string>(); // line id → where its file was uploaded
+    let batch = "";
+    if (withFiles.length > 0) {
+      const prepared = await prepareUploads(withFiles.map((l) => ({ name: l.file.name, size: l.file.size })));
+      if (!prepared.ok) return prepared;
+      batch = prepared.batch;
 
-    for (const [i, f] of files.entries()) {
-      const ticket = prepared.uploads[i];
-      if (!ticket) return { ok: false, error: "Upload failed. Please try again." };
-      const { error } = await supabase.storage
-        .from(BUCKET)
-        .uploadToSignedUrl(ticket.path, ticket.token, f.file, { contentType: contentTypeFor(f.file.name) });
-      if (error) return { ok: false, error: `${f.file.name} couldn't be uploaded. Check your connection and try again.` };
+      for (const [i, l] of withFiles.entries()) {
+        const ticket = prepared.uploads[i];
+        if (!ticket) return { ok: false, error: "Upload failed. Please try again." };
+        const { error } = await supabase.storage
+          .from(BUCKET)
+          .uploadToSignedUrl(ticket.path, ticket.token, l.file, { contentType: contentTypeFor(l.file.name) });
+        if (error) return { ok: false, error: `${l.file.name} couldn't be uploaded. Check your connection and try again.` };
+        paths.set(l.id, ticket.path);
+      }
     }
 
     // No prices are sent: the server works them out from the database
     const result = await placeOrder({
       customer: details,
-      batch: prepared.batch,
-      items: files.map((f, i) => ({ ...f.options, path: prepared.uploads[i]?.path ?? "", fileName: f.file.name })),
+      batch,
+      items: lines.map((l) => {
+        const isDocument = catalog.services.find((s) => s.id === l.serviceId)?.kind === "document";
+        return {
+          serviceId: l.serviceId,
+          path: paths.get(l.id) ?? null,
+          fileName: l.file?.name ?? null,
+          options: isDocument ? l.options : null,
+          details: l.details,
+        };
+      }),
       walkIn: opts.walkIn === true,
     });
     if (!result.ok || opts.walkIn) return result;

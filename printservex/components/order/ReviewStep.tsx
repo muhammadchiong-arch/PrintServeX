@@ -1,12 +1,14 @@
 import { Card } from "@/components/ui/Card";
 import { formatPeso } from "@/lib/format";
 import type { CustomerDetails } from "@/lib/order-details";
-import { priceFile, type OrderPrice, type Prices } from "@/lib/price";
-import { describeOptions, type Catalog, type OrderFile } from "./types";
+import { priceLine, type OrderPrice, type Prices } from "@/lib/price";
+import { quoteNote } from "./PriceSummary";
+import { describeLine, lineInput, type Catalog, type OrderLine } from "./types";
 
 type ReviewStepProps = {
   details: CustomerDetails;
-  files: OrderFile[];
+  chosen: string[];
+  lines: OrderLine[];
   totals: OrderPrice;
   catalog: Catalog;
   prices: Prices;
@@ -24,8 +26,11 @@ function CardTitle({ title, onEdit }: { title: string; onEdit: () => void }) {
   );
 }
 
-// Step 3: everything the customer entered, before they submit
-export function ReviewStep({ details, files, totals, catalog, prices, onEdit }: ReviewStepProps) {
+// Step 4: everything the customer entered, grouped by service, before they submit
+export function ReviewStep({ details, chosen, lines, totals, catalog, prices, onEdit }: ReviewStepProps) {
+  const sizeIds = catalog.sizes.map((s) => s.id);
+  const note = quoteNote(totals.quoteCount);
+
   return (
     <div className="flex flex-col gap-3 lg:gap-4">
       <Card padding="sm" className="flex flex-col gap-1 lg:p-6">
@@ -36,34 +41,47 @@ export function ReviewStep({ details, files, totals, catalog, prices, onEdit }: 
       </Card>
 
       <Card padding="sm" className="flex flex-col gap-3 lg:p-6">
-        <CardTitle title={`Files · ${files.length}`} onEdit={() => onEdit(1)} />
-        <ul className="flex flex-col">
-          {files.map((f, i) => (
-            <li key={f.id} className={`flex justify-between gap-3 ${i > 0 ? "mt-3 border-t border-border pt-3" : ""}`}>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{f.file.name}</p>
-                <p className="text-xs text-slate">{describeOptions(f.options, catalog)}</p>
-              </div>
-              <span className="tabular shrink-0 text-sm font-semibold">{formatPeso(priceFile(prices, f.options)?.total ?? 0)}</span>
-            </li>
-          ))}
-        </ul>
+        <CardTitle title={`Services · ${chosen.length}`} onEdit={() => onEdit(1)} />
+        {chosen.map((serviceId, gi) => {
+          const service = catalog.services.find((s) => s.id === serviceId);
+          if (!service) return null;
+          return (
+            <div key={serviceId} className={gi > 0 ? "border-t border-border pt-3" : undefined}>
+              <p className="text-sm font-semibold">{service.name}</p>
+              <ul className="mt-1 flex flex-col gap-2">
+                {lines
+                  .filter((l) => l.serviceId === serviceId)
+                  .map((l) => {
+                    const p = priceLine(prices, lineInput(l, service), sizeIds);
+                    return (
+                      <li key={l.id} className="flex justify-between gap-3">
+                        <div className="min-w-0">
+                          {l.file && <p className="truncate text-sm">{l.file.name}</p>}
+                          <p className="text-xs text-slate">{describeLine(l, service, catalog)}</p>
+                          {l.details.notes?.trim() && <p className="mt-0.5 line-clamp-2 text-xs text-slate">“{l.details.notes.trim()}”</p>}
+                        </div>
+                        <span className="tabular shrink-0 text-sm font-semibold">
+                          {p?.status === "priced" ? formatPeso(p.total) : <span className="text-xs font-medium text-slate">To be confirmed</span>}
+                        </span>
+                      </li>
+                    );
+                  })}
+              </ul>
+            </div>
+          );
+        })}
+        <button type="button" onClick={() => onEdit(2)} className="self-start rounded px-1 py-1 text-sm font-semibold text-blue hover:underline">
+          Edit files and options
+        </button>
       </Card>
 
       <Card padding="sm" className="flex flex-col gap-2 text-sm lg:p-6">
-        <div className="flex justify-between">
-          <span className="text-slate">Printing</span>
-          <span className="tabular">{formatPeso(totals.printing)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate">Add-ons</span>
-          <span className="tabular">{formatPeso(totals.addOns)}</span>
-        </div>
-        <div className="flex justify-between border-t border-border pt-2 text-base font-semibold">
+        <div className="flex justify-between text-base font-semibold">
           <span>Estimated total</span>
           <span className="tabular">{formatPeso(totals.total)}</span>
         </div>
-        <p className="text-xs text-slate">Staff check your files and confirm the final price. You pay at pickup.</p>
+        {note && <p className="text-xs font-medium text-slate">{note}: staff confirm those prices after checking your order.</p>}
+        <p className="text-xs text-slate">Staff check your order and confirm the final price. You pay at pickup.</p>
       </Card>
     </div>
   );

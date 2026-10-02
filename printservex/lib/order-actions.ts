@@ -13,8 +13,9 @@ import {
   type PrepareUploadsResult,
 } from "@/lib/order-input";
 import type { Order, OrderItem } from "@/lib/orders";
-import { priceFile, priceOrder } from "@/lib/price";
+import { priceLine } from "@/lib/price";
 import { getPricingData, toPrices } from "@/lib/pricing-data";
+import { checkLineDetails } from "@/lib/services";
 import { getCurrentStaff } from "@/lib/staff-session";
 import { UPLOAD_RULES } from "@/lib/shop";
 import { ORDER_FILES_BUCKET, supabaseAdmin } from "@/lib/supabase-admin";
@@ -64,13 +65,16 @@ export async function prepareUploads(raw: unknown): Promise<PrepareUploadsResult
  * Step 2 of submitting: saves the order after the files are uploaded.
  * Business rules checked here, on the server:
  * - customer details are valid and the privacy box was checked
+ * - every service exists and is still offered; its file rule and file types are followed
  * - every file really is in Storage, inside this order's folder, and follows the size rule
- * - the price is calculated HERE from the database prices (the browser sends no price)
+ * - the price is calculated HERE from the database prices (the browser sends no price);
+ *   services without a price are saved as "to be confirmed" (line_total null)
  * - the reference number comes from the database (numbered per day)
  */
 export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
   const input = parsePlaceOrderInput(raw);
-  if (!input || !UUID.test(input.batch)) return { ok: false, error: TRY_AGAIN };
+  const withFiles = input?.items.filter((i) => i.path !== null) ?? [];
+  if (!input || (withFiles.length > 0 && !UUID.test(input.batch))) return { ok: false, error: TRY_AGAIN };
 
   // Walk-in orders: only signed-in staff, and the customer agrees to privacy at the counter
   const staff = input.walkIn ? await getCurrentStaff() : null;
@@ -81,70 +85,108 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
   if (input.items.length === 0 || input.items.length > UPLOAD_RULES.maxFilesPerOrder) return { ok: false, error: TRY_AGAIN };
 
   // Are the files really uploaded? Read their real sizes from Storage (not from the browser).
-  const { data: stored, error: listError } = await supabaseAdmin.storage
-    .from(ORDER_FILES_BUCKET)
-    .list(input.batch, { limit: 100 });
-  if (listError) {
-    console.error("placeOrder: listing files failed", listError);
-    return { ok: false, error: TRY_AGAIN };
+  const storedSizes = new Map<string, number>();
+  if (withFiles.length > 0) {
+    const { data: stored, error: listError } = await supabaseAdmin.storage.from(ORDER_FILES_BUCKET).list(input.batch, { limit: 100 });
+    if (listError) {
+      console.error("placeOrder: listing files failed", listError);
+      return { ok: false, error: TRY_AGAIN };
+    }
+    for (const o of stored) storedSizes.set(`${input.batch}/${o.name}`, o.metadata?.size ?? 0);
   }
-  const storedSizes = new Map(stored.map((o) => [`${input.batch}/${o.name}`, o.metadata?.size ?? 0]));
 
-  // Prices straight from the database
+  // Services and prices straight from the database (active ones only)
   const pricing = await getPricingData();
   if (!pricing) return { ok: false, error: TRY_AGAIN };
   const prices = toPrices(pricing);
+  const sizeIds = pricing.sizes.map((s) => s.id);
 
   const rows = [];
   const items: OrderItem[] = [];
+  let total = 0;
   for (const [index, item] of input.items.entries()) {
-    const bytes = storedSizes.get(item.path);
-    if (!bytes || !item.path.startsWith(`${input.batch}/`)) {
-      return { ok: false, error: `${item.fileName} didn't finish uploading. Please try again.` };
-    }
-    const fileProblem = checkFileMeta(item.fileName, bytes);
-    if (fileProblem) return { ok: false, error: fileProblem };
+    const service = pricing.services.find((s) => s.id === item.serviceId);
+    const category = service && pricing.categories.find((c) => c.key === service.categoryKey);
+    if (!service || !category) return { ok: false, error: "A service in your order is no longer offered. Please go back and choose again." };
 
-    const size = pricing.sizes.find((s) => s.id === item.sizeId);
-    const paper = pricing.types.find((t) => t.id === item.typeId);
-    const price = priceFile(prices, item);
-    if (!size || !paper || !price) {
-      return { ok: false, error: `The options for ${item.fileName} are no longer offered. Please choose others.` };
+    // The file: really uploaded to this order's folder, and a type this service accepts
+    let bytes: number | null = null;
+    if (item.path !== null && item.fileName !== null) {
+      bytes = storedSizes.get(item.path) ?? 0;
+      if (!bytes || !item.path.startsWith(`${input.batch}/`)) {
+        return { ok: false, error: `${item.fileName} didn't finish uploading. Please try again.` };
+      }
+      const fileProblem = checkFileMeta(item.fileName, bytes, service);
+      if (fileProblem) return { ok: false, error: fileProblem };
     }
+
+    // Document Printing needs its print options; the other services don't take them
+    if ((service.kind === "document") !== (item.options !== null)) return { ok: false, error: TRY_AGAIN };
+    const options = item.options ?? { sizeId: "", typeId: "", color: false, pages: 1, copies: 1, binding: false, lamination: false };
+    const details = { ...item.details };
+    const line = { service, options, details, hasFile: bytes !== null };
+    const problem = checkLineDetails(service, details, line.hasFile, sizeIds);
+    if (problem) return { ok: false, error: `${service.name}: ${problem}` };
+    const price = priceLine(prices, line, sizeIds);
+    if (!price) {
+      return { ok: false, error: `The options for ${item.fileName ?? service.name} are no longer offered. Please choose others.` };
+    }
+    const lineTotal = price.status === "priced" ? price.total : null;
+    if (lineTotal !== null) total += lineTotal;
+
+    // Copy names in, so later renames or archived options never change this order
+    const sizeName = pricing.sizes.find((s) => s.id === (service.kind === "document" ? options.sizeId : details.sizeId))?.name;
+    if (details.sizeId) details.sizeName = sizeName;
+    const doc = service.kind === "document" && price.status === "priced" ? price.file : null;
+    const paperName = doc ? pricing.types.find((t) => t.id === options.typeId)?.name : undefined;
+    if (doc && (!sizeName || !paperName)) return { ok: false, error: TRY_AGAIN };
+    const quantity = service.kind === "document" ? options.copies : (details.quantity ?? 1);
 
     rows.push({
       position: index + 1,
+      service_id: service.id,
+      service_name: service.name,
+      category_name: category.name,
+      kind: service.kind,
+      quantity,
+      details,
       file_name: item.fileName,
       file_size_bytes: bytes,
       storage_path: item.path,
-      size_name: size.name,
-      paper_name: paper.name,
-      color: item.color,
-      pages: item.pages,
-      copies: item.copies,
-      binding: item.binding,
-      lamination: item.lamination,
-      rate: price.rate,
-      binding_price: price.binding,
-      lamination_price: price.lamination,
-      line_total: price.total,
+      size_name: doc ? sizeName : null,
+      paper_name: doc ? paperName : null,
+      color: doc ? options.color : null,
+      pages: doc ? options.pages : null,
+      copies: doc ? options.copies : null,
+      binding: doc ? options.binding : false,
+      lamination: doc ? options.lamination : false,
+      rate: doc ? doc.rate : null,
+      binding_price: doc ? doc.binding : 0,
+      lamination_price: doc ? doc.lamination : 0,
+      line_total: lineTotal,
     });
     items.push({
+      serviceName: service.name,
+      categoryName: category.name,
+      kind: service.kind,
+      quantity,
+      details,
       fileName: item.fileName,
-      fileSize: formatFileSize(bytes),
-      size: size.name,
-      paper: paper.name,
-      color: item.color,
-      pages: item.pages,
-      copies: item.copies,
-      binding: item.binding,
-      lamination: item.lamination,
-      rate: price.rate,
-      addOnsTotal: price.binding + price.lamination,
+      fileSize: bytes === null ? null : formatFileSize(bytes),
+      size: doc ? (sizeName ?? null) : null,
+      paper: doc ? (paperName ?? null) : null,
+      color: doc ? options.color : null,
+      pages: doc ? options.pages : null,
+      copies: doc ? options.copies : null,
+      binding: doc ? options.binding : false,
+      lamination: doc ? options.lamination : false,
+      rate: doc ? doc.rate : null,
+      addOnsTotal: doc ? doc.binding + doc.lamination : 0,
+      lineTotal,
     });
   }
 
-  const total = priceOrder(prices, input.items).total;
+  total = Math.round(total * 100) / 100;
   const customer = {
     name: input.customer.name.trim(),
     phone: normalizePhone(input.customer.phone),

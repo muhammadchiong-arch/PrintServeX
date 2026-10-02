@@ -18,8 +18,8 @@ export function WalkInOrder(props: Catalog & { prices: Prices }) {
     <OrderWizard
       {...props}
       variant="staff"
-      onSubmit={async ({ details, files }) => {
-        const result = await submitOrder(details, files, { walkIn: true });
+      onSubmit={async ({ details, lines, catalog }) => {
+        const result = await submitOrder(details, lines, catalog, { walkIn: true });
         if (!result.ok) return result.error;
         toast({ message: `Walk-in order ${result.order.ref} created.` });
         router.replace(`/staff/orders/${result.order.ref}`);

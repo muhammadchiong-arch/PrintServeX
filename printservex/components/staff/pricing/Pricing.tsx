@@ -14,8 +14,9 @@ import { findRate, type AddOnKey } from "@/lib/price";
 import type { PricingData } from "@/lib/pricing-data";
 import { PageTitle, tableHead } from "../parts";
 import { OptionModal, type OptionDraft, type OptionKind } from "./OptionModal";
+import { ServicesTab } from "./ServicesTab";
 
-type Tab = "sizes" | "papers" | "matrix" | "addons";
+type Tab = "sizes" | "papers" | "matrix" | "addons" | "services";
 // One row on the Paper sizes / Paper types / Add-ons tabs
 type Row = { id: string; name: string; detail: string; archived: boolean; draft: OptionDraft };
 type Result = { ok: true } | { ok: false; error: string } | null;
@@ -126,6 +127,7 @@ export function Pricing({ data }: { data: PricingData }) {
               { value: "papers", label: "Paper types" },
               { value: "matrix", label: "Price per page" },
               { value: "addons", label: "Add-ons" },
+              { value: "services", label: "Services" },
             ]}
           />
           {(tab === "sizes" || tab === "papers") && (
@@ -136,7 +138,9 @@ export function Pricing({ data }: { data: PricingData }) {
           )}
         </div>
 
-        {tab === "matrix" ? (
+        {tab === "services" ? (
+          <ServicesTab data={data} />
+        ) : tab === "matrix" ? (
           <>
             <div className="flex items-end gap-3 p-4">
               <div className="w-60">

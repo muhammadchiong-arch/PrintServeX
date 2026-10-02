@@ -3,13 +3,15 @@
 
 import { formatFileSize } from "@/lib/files";
 import type { Order, PaymentMethod } from "@/lib/orders";
+import type { LineDetails, ServiceKind } from "@/lib/services";
 import type { OrderStatus } from "@/lib/status";
 
 // The columns we read. Must match supabase/001_tables.sql.
 export const ORDER_SELECT =
   "ref, source, customer_name, customer_phone, customer_email, status, estimated_total, final_amount, final_note, " +
   "cancel_reason, remarks, payment_method, paid_amount, paid_at, created_at, " +
-  "order_items(position, file_name, file_size_bytes, size_name, paper_name, color, pages, copies, binding, lamination, rate, binding_price, lamination_price), " +
+  "order_items(position, service_name, category_name, kind, quantity, details, file_name, file_size_bytes, size_name, paper_name, color, pages, copies, " +
+  "binding, lamination, rate, binding_price, lamination_price, line_total), " +
   "order_status_history(status, note, actor_label, at)";
 
 export type OrderRow = {
@@ -30,16 +32,22 @@ export type OrderRow = {
   created_at: string;
   order_items: {
     position: number;
-    file_name: string;
-    file_size_bytes: number;
-    size_name: string;
-    paper_name: string;
-    color: boolean;
-    pages: number;
-    copies: number;
+    service_name: string;
+    category_name: string | null;
+    kind: ServiceKind;
+    quantity: number;
+    details: LineDetails | null;
+    file_name: string | null;
+    file_size_bytes: number | null;
+    size_name: string | null;
+    paper_name: string | null;
+    color: boolean | null;
+    pages: number | null;
+    copies: number | null;
     binding: boolean;
     lamination: boolean;
-    rate: number;
+    rate: number | null;
+    line_total: number | null;
     binding_price: number;
     lamination_price: number;
   }[];
@@ -55,8 +63,13 @@ export function rowToOrder(row: OrderRow): Order {
     items: [...row.order_items]
       .sort((a, b) => a.position - b.position)
       .map((i) => ({
+        serviceName: i.service_name,
+        categoryName: i.category_name ?? "",
+        kind: i.kind,
+        quantity: i.quantity,
+        details: i.details ?? {},
         fileName: i.file_name,
-        fileSize: formatFileSize(Number(i.file_size_bytes)),
+        fileSize: i.file_size_bytes === null ? null : formatFileSize(Number(i.file_size_bytes)),
         size: i.size_name,
         paper: i.paper_name,
         color: i.color,
@@ -64,8 +77,9 @@ export function rowToOrder(row: OrderRow): Order {
         copies: i.copies,
         binding: i.binding,
         lamination: i.lamination,
-        rate: Number(i.rate),
+        rate: i.rate === null ? null : Number(i.rate),
         addOnsTotal: Math.round((Number(i.binding_price) + Number(i.lamination_price)) * 100) / 100,
+        lineTotal: i.line_total === null ? null : Number(i.line_total),
       })),
     status: row.status,
     history: [...row.order_status_history]

@@ -1,18 +1,27 @@
+import { areaSqFt, BACKGROUND_LABELS, type LineDetails, type ServiceKind } from "@/lib/services";
 import type { OrderStatus } from "@/lib/status";
 
-// One printed file inside an order
+// One line of an order: a service with its options, and at most one file.
+// Names and prices are copied when the order is placed, so later changes never affect it.
 export type OrderItem = {
-  fileName: string;
-  fileSize: string; // e.g. "3.1 MB"
-  size: string; // paper size name, e.g. "A4"
-  paper: string; // paper type name, e.g. "Bond 80gsm"
-  color: boolean;
-  pages: number;
-  copies: number;
+  serviceName: string; // e.g. "Thesis", "2×2 ID Photo"
+  categoryName: string; // e.g. "Document Printing"
+  kind: ServiceKind;
+  quantity: number; // copies for documents
+  details: LineDetails; // the options of non-document services (see lib/services.ts)
+  fileName: string | null; // null = no file (e.g. "Design it for me")
+  fileSize: string | null; // e.g. "3.1 MB"
+  // Document Printing only (null for other services)
+  size: string | null; // paper size name, e.g. "A4"
+  paper: string | null; // paper type name, e.g. "Bond 80gsm"
+  color: boolean | null;
+  pages: number | null;
+  copies: number | null;
   binding: boolean;
   lamination: boolean;
-  rate: number; // ₱ per page when the order was placed
+  rate: number | null; // ₱ per page when the order was placed
   addOnsTotal: number; // ₱ binding + lamination for this file, when the order was placed
+  lineTotal: number | null; // ₱ for this line, or null = price to be confirmed by staff
 };
 
 export type StatusEvent = {
@@ -42,22 +51,46 @@ export const PAYMENT_LABELS: Record<PaymentMethod, string> = { cash: "Cash", gca
 
 // Prices are stored per item when the order is placed, so later price changes don't affect it
 export function itemPrinting(i: OrderItem): number {
+  if (i.kind !== "document" || i.pages === null || i.copies === null || i.rate === null) return 0;
   return Math.round(i.pages * i.copies * i.rate * 100) / 100;
 }
 // "?? 0": orders kept in the browser from before this field existed
 export const itemAddOns = (i: OrderItem): number => i.addOnsTotal ?? 0;
-export const itemTotal = (i: OrderItem) => itemPrinting(i) + itemAddOns(i);
+// The saved line total. Orders kept in the browser from before services existed have none.
+export const itemTotal = (i: OrderItem) => (i.lineTotal !== undefined ? (i.lineTotal ?? 0) : itemPrinting(i) + itemAddOns(i));
+// Business rule: lines without a price are priced by staff (set as the final price)
+export const isQuote = (i: OrderItem) => i.lineTotal === null;
+export const quoteCount = (o: Order) => o.items.filter(isQuote).length;
 
 export const estimatedTotal = (o: Order) => o.items.reduce((sum, i) => sum + itemTotal(i), 0);
 
 // The amount the customer pays: the final price if staff set one, otherwise the estimate
 export const amountDue = (o: Order) => o.final?.amount ?? estimatedTotal(o);
 
-// "A4 · Bond 80gsm · B&W · 24 pp × 2 · Binding"
+// "A4 · Bond 80gsm · B&W · 24 pp × 2 · Binding" or "White background · × 2"
 export function describeItem(i: OrderItem): string {
-  return [i.size, i.paper, i.color ? "Color" : "B&W", `${i.pages} pp × ${i.copies}`]
-    .concat(i.binding ? ["Binding"] : [], i.lamination ? ["Lamination"] : [])
-    .join(" · ");
+  const d = i.details ?? {};
+  let parts: (string | null | undefined | false)[];
+  switch (i.kind ?? "document") {
+    case "document":
+      parts = [i.size, i.paper, i.color ? "Color" : "B&W", `${i.pages} pp × ${i.copies}`, i.binding && "Binding", i.lamination && "Lamination", d.sides === "double" && "Double-sided"];
+      break;
+    case "large_format": {
+      const area = areaSqFt(d);
+      parts = [d.width !== undefined && d.height !== undefined && `${d.width} × ${d.height} ${d.unit}`, area !== null && `${area} sq ft`, `× ${i.quantity}`];
+      break;
+    }
+    default:
+      parts = [
+        d.sizeName,
+        i.kind === "school_business" && (d.color ? "Color" : "B&W"),
+        d.background && BACKGROUND_LABELS[d.background],
+        i.kind === "design" && (d.mode === "file" ? "Own file" : "Design service"),
+        d.sizeText,
+        `× ${i.quantity}`,
+      ];
+  }
+  return parts.filter(Boolean).join(" · ");
 }
 
 // Business rule: reference numbers look like PSX-20261001-0042 (date + 4-digit number)

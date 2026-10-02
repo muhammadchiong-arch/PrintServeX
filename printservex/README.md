@@ -19,7 +19,7 @@ Next.js (App Router) + TypeScript + Tailwind CSS + Supabase.
 | Screen | URL |
 | --- | --- |
 | C1 Home (live price list from Supabase) | `/` |
-| C2 New order (3 steps, live price) | `/order` |
+| C2 New order (4 steps: details → service → files & options → review, live price) | `/order` |
 | C3 Confirmation | `/order/confirmation?ref=…` |
 | C4 Track order / C5 Order status | `/track` (looks up real orders on the server) |
 | S1 Staff login (Supabase Auth, locks after 5 wrong passwords) | `/staff/login` |
@@ -51,6 +51,8 @@ without it the cleanup never runs.
 6. `supabase/006_staff_work.sql` – staff actions: order status, payments, final price, stock, temporary passwords
 7. `supabase/007_pricing_shop.sql` – saving Pricing & options and Shop info (admin only)
 8. `supabase/008_no_double_actions.sql` – an order can't be moved, cancelled or paid twice
+9. `supabase/009_services.sql` – service catalog (7 categories, 44 services) and orders with several services.
+   Run it BEFORE deploying the code that uses it: staff orders and tracking read its new columns.
 
 After that, sign in as the owner and add the other staff on the Users page.
 
@@ -65,6 +67,10 @@ Staff accounts are only made by the owner, never by sign-up.
   profile password and the audit log. No sample data: everything comes from Supabase and
   starts empty. Data loads in the portal layout (`lib/staff-data.ts`), every change is a
   Server Action in `lib/staff-actions.ts`, and the portal reloads its data every minute.
+- **Services:** customers pick services by category (`components/order/ServiceStep.tsx`). Each service has a
+  kind (`lib/services.ts`) that decides its options, file types and price: Document Printing per page,
+  Large-Format per sq ft, the rest per unit. Services without a price show "Price to be confirmed"; the
+  owner sets prices on Pricing & options → Services.
 - **Pricing & options and Shop info:** saved by the admin in Supabase (`lib/admin-actions.ts`).
   Customer pages are rebuilt right after a save. Add-on prices come from the `add_ons` table,
   and each order keeps the prices it was placed with. `lib/shop.ts` only holds a fallback

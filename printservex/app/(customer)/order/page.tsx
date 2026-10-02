@@ -18,7 +18,7 @@ export default async function NewOrderPage() {
   const data = await getPricingData();
 
   // Can't take orders without prices: show a clear message instead of a broken form
-  if (!data || data.sizes.length === 0 || data.types.length === 0) {
+  if (!data || data.sizes.length === 0 || data.types.length === 0 || data.services.length === 0) {
     return (
       <main id="main" className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
         <CircleAlert size={32} aria-hidden className="text-cancelled" />
@@ -36,7 +36,7 @@ export default async function NewOrderPage() {
   // Suspense is needed because the form reads the step from the URL (?step=2)
   return (
     <Suspense>
-      <CustomerOrderForm sizes={data.sizes} types={data.types} prices={toPrices(data)} />
+      <CustomerOrderForm sizes={data.sizes} types={data.types} categories={data.categories} services={data.services} prices={toPrices(data)} />
     </Suspense>
   );
 }

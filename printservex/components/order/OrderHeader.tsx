@@ -11,8 +11,8 @@ type OrderHeaderProps = {
 
 const iconBtn = "flex size-11 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-bg active:bg-bg";
 
-// Phones: back/close button, step title, "Step 2 of 3" and a progress bar.
-// Desktop: logo on the left, the 3-step stepper on the right.
+// Phones: back/close button, step title, "Step 2 of 4" and a progress bar.
+// Desktop: logo on the left, the 4-step stepper on the right.
 export function OrderHeader({ step, onBack }: OrderHeaderProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-surface">
@@ -46,7 +46,7 @@ export function OrderHeader({ step, onBack }: OrderHeaderProps) {
         <Link href="/" aria-label="PrintServeX home" className="shrink-0 rounded-lg">
           <Image src="/logo-horizontal-color.png" alt="PrintServeX" width={2400} height={698} priority className="h-11 w-auto" />
         </Link>
-        <Stepper steps={[...STEPS]} current={step} className="w-[560px]" />
+        <Stepper steps={[...STEPS]} current={step} className="w-[640px]" />
       </div>
     </header>
   );

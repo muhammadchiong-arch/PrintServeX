@@ -2,6 +2,8 @@
 // The browser uses it for the live estimate, and the server uses the same functions
 // (with prices read from the database) for the real price, so nobody can fake a lower total.
 
+import { areaSqFt, checkLineDetails, type LineDetails, type Service } from "@/lib/services";
+
 // One row of price_rules: ₱ per printed page for a size + paper type + color mode
 export type PriceRule = {
   sizeId: string;
@@ -15,7 +17,7 @@ export type AddOn = { label: string; price: number; unit: string };
 export type AddOnKey = "binding" | "lamination";
 export type AddOns = Record<AddOnKey, AddOn | null>; // null = not offered right now
 
-// Everything needed to price an order
+// Everything needed to price an order (services carry their own unit price)
 export type Prices = { rules: PriceRule[]; addOns: AddOns };
 
 // The options a customer picks for one file
@@ -65,27 +67,49 @@ export function priceFile({ rules, addOns }: Prices, o: PrintOptions): FilePrice
   return { rate, printing, binding, lamination, total: centavos(printing + binding + lamination) };
 }
 
+// One line of an order: a service, its options and whether a file is attached
+export type LineInput = { service: Service; options: PrintOptions; details: LineDetails; hasFile: boolean };
+
+// "priced" = we can estimate it now · "quote" = staff set the price (the service has no price yet)
+export type LinePrice = { status: "priced"; total: number; file: FilePrice | null } | { status: "quote" };
+
+/**
+ * Price of one line. Business rules:
+ * - Document Printing: per page from price_rules, plus binding / lamination (priceFile).
+ * - Large-Format: unit price × square feet × quantity.
+ * - Every other service: unit price × quantity.
+ * - A service without a unit price is "quote": staff confirm it, it isn't added to the estimate.
+ * Returns null if the line isn't valid yet (missing options, combination not offered).
+ */
+export function priceLine(prices: Prices, line: LineInput, sizeIds: string[]): LinePrice | null {
+  if (checkLineDetails(line.service, line.details, line.hasFile, sizeIds)) return null;
+  if (line.service.kind === "document") {
+    const file = priceFile(prices, line.options);
+    return file ? { status: "priced", total: file.total, file } : null;
+  }
+  const unit = line.service.unitPrice;
+  if (unit === null) return { status: "quote" };
+  const quantity = line.details.quantity ?? 1;
+  const area = line.service.kind === "large_format" ? (areaSqFt(line.details) ?? 0) : 1;
+  return { status: "priced", total: centavos(unit * area * quantity), file: null };
+}
+
 export type OrderPrice = {
-  printing: number;
-  addOns: number;
-  total: number;
-  // True if at least one file has no price (combination not offered)
-  hasUnpricedFile: boolean;
+  total: number; // estimate of the priced lines
+  quoteCount: number; // lines staff will price
+  invalidCount: number; // lines that still need fixing
 };
 
-// Adds up all files in the order
-export function priceOrder(prices: Prices, files: PrintOptions[]): OrderPrice {
-  let printing = 0;
-  let addOns = 0;
-  let hasUnpricedFile = false;
-  for (const f of files) {
-    const p = priceFile(prices, f);
-    if (!p) {
-      hasUnpricedFile = true;
-      continue;
-    }
-    printing += p.printing;
-    addOns += p.binding + p.lamination;
+// Adds up all lines in the order
+export function priceOrder(prices: Prices, lines: LineInput[], sizeIds: string[]): OrderPrice {
+  let total = 0;
+  let quoteCount = 0;
+  let invalidCount = 0;
+  for (const line of lines) {
+    const p = priceLine(prices, line, sizeIds);
+    if (!p) invalidCount++;
+    else if (p.status === "quote") quoteCount++;
+    else total += p.total;
   }
-  return { printing: centavos(printing), addOns: centavos(addOns), total: centavos(printing + addOns), hasUnpricedFile };
+  return { total: centavos(total), quoteCount, invalidCount };
 }

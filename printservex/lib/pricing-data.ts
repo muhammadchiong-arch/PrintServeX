@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import type { AddOn, AddOnKey, AddOns, PriceRule, Prices } from "@/lib/price";
+import { SERVICE_KINDS, type FileRule, type Service, type ServiceCategory, type ServiceKind } from "@/lib/services";
 
 // ⚠ If your Supabase column names are different, change them here only.
 const COLUMNS = {
@@ -22,6 +23,8 @@ export type PricingData = {
   types: PaperType[];
   rules: PriceRule[]; // active rules only
   addOnList: AddOnRow[];
+  categories: ServiceCategory[]; // in display order
+  services: Service[]; // in display order (supabase/009_services.sql)
 };
 
 type DbRow = Record<string, unknown>;
@@ -49,7 +52,7 @@ export function toPrices(data: PricingData): Prices {
 }
 
 /**
- * Reads paper sizes, paper types, price rules and add-ons.
+ * Reads paper sizes, paper types, price rules, add-ons and the service catalog.
  * - Customers (public key): RLS returns active rows only.
  * - Staff (`all: true`, signed-in client): archived sizes and types too, for S9.
  * Returns null if Supabase can't be reached, so pages can show an error message.
@@ -60,11 +63,13 @@ export async function readPricing(client: SupabaseClient, { all = false } = {}):
     const q = client.from(table).select("*");
     return all ? q : q.eq("is_active", true);
   };
-  const [sizes, types, rules, addOns] = await Promise.all([
+  const [sizes, types, rules, addOns, categories, services] = await Promise.all([
     read("paper_sizes").order("created_at"),
     read("paper_types").order("created_at"),
     client.from("price_rules").select("*").eq("is_active", true),
     read("add_ons"),
+    read("service_categories").order("sort"),
+    read("services").order("sort"),
   ]);
 
   const failed = [sizes, types, rules, addOns].find((r) => r.error);
@@ -72,6 +77,10 @@ export async function readPricing(client: SupabaseClient, { all = false } = {}):
     console.error("Pricing data failed to load", failed.error);
     return null;
   }
+  // The service catalog comes from 009_services.sql. Without it, prices still show on the home
+  // page; the order form says it can't take orders until the catalog exists.
+  const catalogError = categories.error ?? services.error;
+  if (catalogError) console.error("Service catalog failed to load (run supabase/009_services.sql?)", catalogError.message);
 
   return {
     sizes: ((sizes.data ?? []) as DbRow[]).flatMap((s) => {
@@ -101,6 +110,35 @@ export async function readPricing(client: SupabaseClient, { all = false } = {}):
       // Binding first, like the order form
       return [{ key, label: text(a, "label") ?? key, price, unit: text(a, "unit") ?? "", active: active(a) }];
     }).sort((x, y) => (x.key === "binding" ? -1 : 1) - (y.key === "binding" ? -1 : 1)),
+    categories: ((catalogError ? [] : (categories.data ?? [])) as DbRow[]).flatMap((c): ServiceCategory[] => {
+      const key = text(c, "key");
+      const name = text(c, "name");
+      return key && name ? [{ key, name, description: text(c, "description") ?? "", icon: text(c, "icon") ?? "printer", active: active(c) }] : [];
+    }),
+    services: ((catalogError ? [] : (services.data ?? [])) as DbRow[]).flatMap((v): Service[] => {
+      const id = text(v, "id");
+      const name = text(v, "name");
+      const categoryKey = text(v, "category_key");
+      const kind = text(v, "kind") as ServiceKind | null;
+      const fileRule = text(v, "file_rule") as FileRule | null;
+      if (!id || !name || !categoryKey || !kind || !SERVICE_KINDS.includes(kind) || !fileRule) return [];
+      const defaults = v.defaults && typeof v.defaults === "object" ? (v.defaults as { color?: unknown }) : {};
+      return [
+        {
+          id,
+          categoryKey,
+          name,
+          description: text(v, "description") ?? "",
+          kind,
+          unitPrice: kind === "document" ? null : num(v, "unit_price"),
+          unitLabel: text(v, "unit_label") ?? "per piece",
+          fileTypes: Array.isArray(v.file_types) ? v.file_types.filter((t): t is string => typeof t === "string") : [],
+          fileRule,
+          defaults: { color: defaults.color === true ? true : undefined },
+          active: active(v),
+        },
+      ];
+    }),
   };
 }
 

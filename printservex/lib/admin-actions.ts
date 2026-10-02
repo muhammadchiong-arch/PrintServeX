@@ -56,6 +56,13 @@ export async function saveAddOn(key: AddOnKey, label: string, price: number, uni
   return adminRpc("admin_save_add_on", { p_key: key, p_label: label.slice(0, 40), p_price: price, p_unit: unit.slice(0, 30) });
 }
 
+// A service's price per unit (null = "price to be confirmed by staff") and whether it's offered
+export async function saveService(id: string, unitPrice: number | null, active: boolean): Promise<ActionResult> {
+  if (!UUID.test(id) || typeof active !== "boolean") return FAILED;
+  if (unitPrice !== null && (typeof unitPrice !== "number" || !Number.isFinite(unitPrice))) return FAILED;
+  return adminRpc("admin_save_service", { p_id: id, p_unit_price: unitPrice, p_active: active });
+}
+
 export async function saveShop(shop: Shop): Promise<ActionResult> {
   const fields = ["name", "area", "address", "phone", "email", "hours", "hoursLong", "usualTurnaround", "pickupNote"] as const;
   if (!shop || fields.some((f) => typeof shop[f] !== "string" || shop[f].length > 300)) return FAILED;
