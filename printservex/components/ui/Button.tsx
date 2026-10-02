@@ -6,11 +6,11 @@ export type ButtonSize = "lg" | "md";
 
 const base =
   "inline-flex items-center justify-center gap-2 rounded-lg font-semibold whitespace-nowrap " +
-  "transition-[background-color,border-color,color,transform] duration-200 " +
-  // Instant press feedback
-  "active:translate-y-px " +
+  "transition-[background-color,border-color,color,scale] duration-150 ease-snap " +
+  // Press feedback: shrink a little (label and icon shrink with it)
+  "active:scale-[0.97] " +
   // Disabled: slate text on border gray, never opacity alone
-  "disabled:cursor-not-allowed disabled:border-transparent disabled:bg-border disabled:text-slate disabled:active:translate-y-0";
+  "disabled:cursor-not-allowed disabled:border-transparent disabled:bg-border disabled:text-slate disabled:active:scale-100";
 
 const variants: Record<ButtonVariant, string> = {
   primary: "bg-blue text-white hover:bg-blue-hover",

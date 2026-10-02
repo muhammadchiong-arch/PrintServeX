@@ -93,11 +93,11 @@ export function Confirmation() {
             type="button"
             onClick={copy}
             className={cn(
-              buttonClasses("secondary", "lg", "w-full active:scale-[0.97]"),
+              buttonClasses("secondary", "lg", "w-full"),
               copied && "border-completed bg-completed-tint text-completed hover:bg-completed-tint",
             )}
           >
-            {copied ? <Check size={20} aria-hidden /> : <Copy size={20} aria-hidden />}
+            {copied ? <Check size={20} aria-hidden className="transition-[opacity,scale] duration-150 ease-snap starting:scale-90 starting:opacity-0" /> : <Copy size={20} aria-hidden />}
             {copied ? "Copied" : "Copy number"}
           </button>
         </Card>
@@ -121,7 +121,7 @@ export function Confirmation() {
 
         <Link
           href={last4 ? `/track?ref=${ref}&code=${last4}` : `/track?ref=${ref}`}
-          className={buttonClasses("primary", "lg", "mt-4 active:scale-[0.97]")}
+          className={buttonClasses("primary", "lg", "mt-4")}
         >
           Track this order
         </Link>

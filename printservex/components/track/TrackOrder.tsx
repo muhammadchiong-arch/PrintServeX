@@ -97,7 +97,7 @@ export function TrackOrder({ result, initialRef, initialCode }: TrackOrderProps)
           invalid={Boolean(notFound)}
         />
       </div>
-      <Button type="submit" disabled={checking} className="active:scale-[0.97]">
+      <Button type="submit" disabled={checking}>
         {checking ? "Checking…" : "Check status"}
       </Button>
     </form>

@@ -31,7 +31,7 @@ export function Faq({ items }: { items: FaqItem[] }) {
                 <ChevronDown
                   size={20}
                   aria-hidden
-                  className={cn("shrink-0 text-slate transition-transform duration-300 ease-out", isOpen && "rotate-180")}
+                  className={cn("shrink-0 text-slate transition-transform duration-200 ease-snap", isOpen && "rotate-180")}
                 />
               </button>
             </h3>
@@ -42,7 +42,7 @@ export function Faq({ items }: { items: FaqItem[] }) {
             <div
               id={answerId}
               className={cn(
-                "grid transition-[grid-template-rows,opacity,visibility] duration-300 ease-out lg:visible lg:grid-rows-[1fr] lg:opacity-100",
+                "grid transition-[grid-template-rows,opacity,visibility] duration-250 ease-snap lg:visible lg:grid-rows-[1fr] lg:opacity-100",
                 // invisible = also hidden from screen readers while closed
                 isOpen ? "grid-rows-[1fr] opacity-100" : "invisible grid-rows-[0fr] opacity-0",
               )}

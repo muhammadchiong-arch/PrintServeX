@@ -25,7 +25,7 @@ export function SegmentedControl<T extends string>({ label, options, value, onCh
       >
         <span
           aria-hidden
-          className="absolute inset-y-1 left-1 rounded-md bg-surface shadow-[0_1px_2px_rgb(15_30_61/0.1),0_2px_8px_rgb(15_30_61/0.06)] transition-transform duration-300 ease-out"
+          className="absolute inset-y-1 left-1 rounded-md bg-surface shadow-[0_1px_2px_rgb(15_30_61/0.1),0_2px_8px_rgb(15_30_61/0.06)] transition-transform duration-200 ease-move"
           style={{ width: `calc((100% - 8px) / ${options.length})`, transform: `translateX(${index * 100}%)` }}
         />
         {options.map((o) => (

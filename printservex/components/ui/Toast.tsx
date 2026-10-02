@@ -13,7 +13,7 @@ type ToastInput = {
   action?: { label: string; onClick: () => void };
 };
 
-type ToastItem = ToastInput & { id: number };
+type ToastItem = ToastInput & { id: number; leaving?: boolean };
 
 const ToastContext = createContext<((t: ToastInput) => void) | null>(null);
 
@@ -25,12 +25,17 @@ export function useToast() {
 }
 
 const DISMISS_AFTER_MS = 5000;
+const EXIT_MS = 150; // must match duration-150 on the leaving toast
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const nextId = useRef(1);
 
-  const remove = useCallback((id: number) => setItems((all) => all.filter((t) => t.id !== id)), []);
+  // Fade out first, then take it away
+  const remove = useCallback((id: number) => {
+    setItems((all) => all.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
+    setTimeout(() => setItems((all) => all.filter((t) => t.id !== id)), EXIT_MS);
+  }, []);
 
   const show = useCallback(
     (t: ToastInput) => {
@@ -64,7 +69,9 @@ function Toast({ item, onDone }: { item: ToastItem; onDone: () => void }) {
     <div
       role={isError ? "alert" : "status"}
       className={cn(
-        "pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-lg px-4 py-3 text-sm animate-[psx-fade-up_250ms_ease-out]",
+        // Enters from 8px below (starting: = @starting-style), leaves faster than it came
+        "pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-lg px-4 py-3 text-sm transition-[opacity,translate] ease-snap starting:translate-y-2 starting:opacity-0",
+        item.leaving ? "translate-y-1 opacity-0 duration-150" : "duration-200",
         isError ? "border border-border bg-surface text-navy shadow-card" : "bg-navy text-white shadow-pop",
       )}
     >

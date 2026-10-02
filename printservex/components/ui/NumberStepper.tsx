@@ -15,7 +15,7 @@ type NumberStepperProps = {
 export function NumberStepper({ label, value, onChange, min = 1, max = 99 }: NumberStepperProps) {
   const labelId = useId();
   const btn =
-    "flex h-full w-12 items-center justify-center transition-[transform,background-color] duration-150 active:scale-90 disabled:text-[#cbd5e1] disabled:active:scale-100";
+    "flex h-full w-12 items-center justify-center transition-[scale,background-color] duration-150 ease-snap active:scale-[0.95] disabled:text-[#cbd5e1] disabled:active:scale-100";
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-sm font-medium" id={labelId}>

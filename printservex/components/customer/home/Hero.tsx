@@ -18,11 +18,11 @@ export function Hero() {
             Upload your files, see the price right away, and pay when you pick up. No account needed.
           </p>
           <div className="flex flex-col gap-4 sm:flex-row sm:gap-3">
-            <Link href="/order" className={buttonClasses("primary", "lg", "active:scale-[0.97] sm:px-6")}>
+            <Link href="/order" className={buttonClasses("primary", "lg", "sm:px-6")}>
               Place an order
               <ArrowRight size={20} aria-hidden />
             </Link>
-            <Link href="/track" className={buttonClasses("secondary", "lg", "active:scale-[0.97] sm:px-6")}>
+            <Link href="/track" className={buttonClasses("secondary", "lg", "sm:px-6")}>
               Track an order
             </Link>
           </div>

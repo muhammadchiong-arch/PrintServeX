@@ -78,7 +78,7 @@ export function PriceSummary({ files, totals, prices, primary, back, compact = f
       </div>
       <p className="text-xs text-slate">{compact ? "Estimate. Confirm the final price after checking the files." : "Staff confirm the final price. You pay at pickup."}</p>
 
-      <Button size={size} onClick={primary.onClick} disabled={primary.disabled} className="active:scale-[0.97]">
+      <Button size={size} onClick={primary.onClick} disabled={primary.disabled}>
         {primary.label}
       </Button>
       {primary.disabled && primary.hint && <p className="-mt-1 text-center text-xs text-slate">{primary.hint}</p>}
@@ -116,7 +116,7 @@ export function MobileOrderBar({ fileCount, totals, primary, showTotal }: Mobile
             </p>
           </div>
         )}
-        <Button onClick={primary.onClick} disabled={primary.disabled} className="active:scale-[0.97]">
+        <Button onClick={primary.onClick} disabled={primary.disabled}>
           {primary.label}
         </Button>
         {!showTotal && primary.disabled && primary.hint && <p className="text-center text-xs text-slate">{primary.hint}</p>}

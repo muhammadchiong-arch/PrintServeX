@@ -88,9 +88,9 @@ export function FilesStep({ files, errors, catalog, prices, onAddFiles, onChange
               aria-valuenow={f.progress}
               aria-valuemin={0}
               aria-valuemax={100}
-              className="h-1.5 rounded-full bg-border"
+              className="h-1.5 overflow-hidden rounded-full bg-border"
             >
-              <div className="h-1.5 rounded-full bg-blue transition-[width] duration-200" style={{ width: `${f.progress}%` }} />
+              <div className="h-1.5 w-full origin-left bg-blue transition-transform duration-200 ease-linear" style={{ transform: `scaleX(${f.progress / 100})` }} />
             </div>
           </div>
         ) : (

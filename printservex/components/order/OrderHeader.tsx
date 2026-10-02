@@ -35,8 +35,8 @@ export function OrderHeader({ step, onBack }: OrderHeaderProps) {
         </div>
         <div className="h-1 bg-border">
           <div
-            className="h-1 bg-blue transition-[width] duration-300 ease-out"
-            style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
+            className="h-1 w-full origin-left bg-blue transition-transform duration-250 ease-move"
+            style={{ transform: `scaleX(${(step + 1) / STEPS.length})` }}
           />
         </div>
       </div>

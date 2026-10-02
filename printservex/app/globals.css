@@ -61,6 +61,11 @@
   /* The one soft shadow, for cards only */
   --shadow-card: 0 1px 3px rgb(15 30 61 / 0.06), 0 4px 16px rgb(15 30 61 / 0.05);
   --shadow-pop: 0 16px 48px rgb(15 30 61 / 0.2);
+
+  /* Motion: ease-snap for things appearing, leaving or being pressed;
+     ease-move for things sliding across the screen (progress bar, segmented control) */
+  --ease-snap: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-move: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 body {
