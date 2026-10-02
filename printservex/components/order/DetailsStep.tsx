@@ -6,16 +6,22 @@ import { Input } from "@/components/ui/Input";
 import type { CustomerDetails, DetailsErrors } from "@/lib/order-details";
 
 type DetailsStepProps = {
+  variant: "customer" | "staff";
   details: CustomerDetails;
   errors: DetailsErrors; // only filled after the customer presses Continue
   onChange: (patch: Partial<CustomerDetails>) => void;
 };
 
 // Step 1: name, contact number, optional email, privacy consent
-export function DetailsStep({ details, errors, onChange }: DetailsStepProps) {
+export function DetailsStep({ variant, details, errors, onChange }: DetailsStepProps) {
+  const isStaff = variant === "staff";
   return (
     <div className="flex flex-col gap-5 lg:max-w-[560px]">
-      <p className="-mt-3 text-sm text-slate">We only use these to tell you when your order is ready.</p>
+      <p className={isStaff ? "text-sm text-slate" : "-mt-3 text-sm text-slate"}>
+        {isStaff
+          ? "Ask for the customer's name and mobile number. They use the last 4 digits to track the order."
+          : "We only use these to tell you when your order is ready."}
+      </p>
       <Input
         id="name"
         label="Full name"
@@ -34,7 +40,7 @@ export function DetailsStep({ details, errors, onChange }: DetailsStepProps) {
         value={details.phone}
         onChange={(e) => onChange({ phone: e.target.value })}
         error={errors.phone}
-        hint="You'll need the last 4 digits to track your order."
+        hint={isStaff ? undefined : "You'll need the last 4 digits to track your order."}
         placeholder="0917 482 1953"
       />
       <Input
@@ -48,12 +54,14 @@ export function DetailsStep({ details, errors, onChange }: DetailsStepProps) {
         error={errors.email}
         placeholder="juan.delacruz@gmail.com"
       />
-      <Checkbox checked={details.consent} onChange={(consent) => onChange({ consent })} error={errors.consent}>
-        I agree that PrintServeX may keep my details and files for 30 days to process this order.{" "}
-        <Link href="/privacy" target="_blank" className="font-medium text-blue underline-offset-2 hover:underline">
-          Privacy notice
-        </Link>
-      </Checkbox>
+      {!isStaff && (
+        <Checkbox checked={details.consent} onChange={(consent) => onChange({ consent })} error={errors.consent}>
+          I agree that PrintServeX may keep my details and files for 30 days to process this order.{" "}
+          <Link href="/privacy" target="_blank" className="font-medium text-blue underline-offset-2 hover:underline">
+            Privacy notice
+          </Link>
+        </Checkbox>
+      )}
     </div>
   );
 }

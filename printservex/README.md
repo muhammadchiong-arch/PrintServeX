@@ -12,13 +12,34 @@ Next.js (App Router) + TypeScript + Tailwind CSS + Supabase.
    ```
 3. `npm run dev` and open http://localhost:3000
 
-## Built so far
+## Screens
 
 | Screen | URL |
 | --- | --- |
 | C1 Home (live price list from Supabase) | `/` |
-| C2 New order (3 steps, live price, browser only for now) | `/order` |
-| UI preview (temporary) | `/ui-preview`, `/staff/ui-preview` |
+| C2 New order (3 steps, live price) | `/order` |
+| C3 Confirmation | `/order/confirmation?ref=…` |
+| C4 Track order / C5 Order status | `/track` (try PSX-20261001-0042 + 1953) |
+| S1 Staff login (UI only) | `/staff/login` |
+| S2 Dashboard | `/staff/dashboard` |
+| S3 Orders / S4 Order detail | `/staff/orders`, `/staff/orders/PSX-20261001-0042` |
+| S5 Walk-in order | `/staff/walk-in` |
+| S6 Customers | `/staff/customers` |
+| S7 Inventory / S8 Item detail | `/staff/inventory`, `/staff/inventory/bond-a4-80` |
+| S9 Pricing & options | `/staff/pricing` |
+| S10 Reports | `/staff/reports` |
+| S11 Users | `/staff/users` |
+| S12 Settings | `/staff/settings` |
+| S13 Profile | `/staff/profile` |
+
+## What is real and what is sample data
+
+- **Real (Supabase):** paper sizes, paper types and prices (home page, order form, walk-in, pricing page).
+- **Sample data:** orders, customers, inventory, staff users and the audit log (`lib/sample/`).
+  Staff pages share them through `components/staff/StaffStore.tsx`, so a change on one page shows on the others.
+  Reloading the page resets them. Orders placed on `/order` are kept in the browser tab (sessionStorage).
+- Next step: create the `orders`, `order_items`, `inventory`, `staff` tables and replace each action in
+  `StaffStore.tsx` / `lib/customer-orders.ts` with a Supabase call.
 
 ## Where things are
 
@@ -28,3 +49,4 @@ Next.js (App Router) + TypeScript + Tailwind CSS + Supabase.
 - `components/ui/` – reusable building blocks (Button, Input, Modal, …)
 - `lib/price.ts` – all price calculations
 - `lib/pricing-data.ts` – reads paper sizes, types and prices from Supabase (column names at the top)
+- `lib/orders.ts` – order types and business rules (next status, cancel rules, totals)

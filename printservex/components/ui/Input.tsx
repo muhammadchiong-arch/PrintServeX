@@ -8,10 +8,12 @@ type InputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "size"> & {
   label: string;
   hint?: string;
   error?: string;
+  // Red border without a message (when the message is shown elsewhere, e.g. "No matching order")
+  invalid?: boolean;
   size?: "lg" | "md";
 };
 
-export function Input({ label, hint, error, size = "lg", id, required, className, ...rest }: InputProps) {
+export function Input({ label, hint, error, invalid, size = "lg", id, required, className, ...rest }: InputProps) {
   const autoId = useId();
   const inputId = id ?? autoId;
   return (
@@ -19,9 +21,9 @@ export function Input({ label, hint, error, size = "lg", id, required, className
       <input
         id={inputId}
         required={required}
-        aria-invalid={error ? true : undefined}
+        aria-invalid={error || invalid ? true : undefined}
         aria-describedby={error || hint ? `${inputId}-msg` : undefined}
-        className={cn(controlClasses(size, Boolean(error)), className)}
+        className={cn(controlClasses(size, Boolean(error || invalid)), className)}
         {...rest}
       />
     </Field>

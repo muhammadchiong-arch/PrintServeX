@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
 import { CircleAlert } from "lucide-react";
-import { OrderWizard } from "@/components/order/OrderWizard";
+import { CustomerOrderForm } from "@/components/order/CustomerOrderForm";
 import { buttonClasses } from "@/components/ui/Button";
 import { getPricingData } from "@/lib/pricing-data";
 import { SHOP } from "@/lib/shop";
@@ -35,7 +35,7 @@ export default async function NewOrderPage() {
   // Suspense is needed because the form reads the step from the URL (?step=2)
   return (
     <Suspense>
-      <OrderWizard sizes={data.sizes} types={data.types} rules={data.rules} />
+      <CustomerOrderForm sizes={data.sizes} types={data.types} rules={data.rules} />
     </Suspense>
   );
 }

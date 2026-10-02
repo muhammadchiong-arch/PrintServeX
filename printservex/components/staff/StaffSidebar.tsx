@@ -15,7 +15,7 @@ export function StaffSidebar({ isAdmin }: StaffSidebarProps) {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 flex h-dvh w-60 shrink-0 flex-col gap-1 overflow-y-auto bg-navy px-3 py-5 text-[#c9d2e3]">
+    <aside className="sticky top-0 print:hidden flex h-dvh w-60 shrink-0 flex-col gap-1 overflow-y-auto bg-navy px-3 py-5 text-[#c9d2e3]">
       <Link href="/staff/dashboard" className="mb-4 flex items-center gap-2 rounded-lg px-2">
         <Image src="/app-icon.png" alt="" width={32} height={32} className="size-8" />
         <span className="font-heading text-lg font-semibold text-white">PrintServeX</span>

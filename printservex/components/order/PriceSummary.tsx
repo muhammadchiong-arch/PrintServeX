@@ -16,14 +16,23 @@ type PriceSummaryProps = {
   rules: PriceRule[];
   primary: SummaryAction;
   back?: { label: string; onClick: () => void };
+  compact?: boolean; // staff walk-in: smaller buttons, always visible
 };
 
 const row = "flex justify-between gap-3 text-sm";
 
 // Desktop: price card on the right that stays in view while scrolling
-export function PriceSummary({ files, totals, rules, primary, back }: PriceSummaryProps) {
+export function PriceSummary({ files, totals, rules, primary, back, compact = false }: PriceSummaryProps) {
+  const size = compact ? "md" : "lg";
   return (
-    <aside aria-label="Price summary" className="sticky top-24 flex flex-col gap-3 rounded-xl bg-surface p-6 shadow-card max-lg:hidden lg:mt-[52px]">
+    <aside
+      aria-label="Price summary"
+      className={
+        compact
+          ? "sticky top-[84px] flex flex-col gap-3 rounded-xl bg-surface p-5 shadow-card"
+          : "sticky top-24 flex flex-col gap-3 rounded-xl bg-surface p-6 shadow-card max-lg:hidden lg:mt-[52px]"
+      }
+    >
       <h2 className="text-lg">Price summary</h2>
 
       {files.length === 0 && <p className="text-sm text-slate">No files yet. You&apos;ll add them in the next step.</p>}
@@ -67,14 +76,14 @@ export function PriceSummary({ files, totals, rules, primary, back }: PriceSumma
           {formatPeso(totals.total)}
         </span>
       </div>
-      <p className="text-xs text-slate">Staff confirm the final price. You pay at pickup.</p>
+      <p className="text-xs text-slate">{compact ? "Estimate. Confirm the final price after checking the files." : "Staff confirm the final price. You pay at pickup."}</p>
 
-      <Button onClick={primary.onClick} disabled={primary.disabled} className="active:scale-[0.97]">
+      <Button size={size} onClick={primary.onClick} disabled={primary.disabled} className="active:scale-[0.97]">
         {primary.label}
       </Button>
       {primary.disabled && primary.hint && <p className="-mt-1 text-center text-xs text-slate">{primary.hint}</p>}
       {back && (
-        <Button variant="ghost" onClick={back.onClick}>
+        <Button size={size} variant={compact ? "secondary" : "ghost"} onClick={back.onClick}>
           {back.label}
         </Button>
       )}
