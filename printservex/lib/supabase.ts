@@ -1,14 +1,20 @@
 // Supabase client used by the server pages (price list, order form).
-// If your own lib/supabase.ts is different, keep yours: the pages only need
-// an exported `supabase` client. Keys come from .env.local (never commit it).
+// Keys come from .env.local (never commit it) and from Vercel's Environment Variables.
 import { createClient } from "@supabase/supabase-js";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+// Supabase has used different names for this key over time, so accept any of them
+const key =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ??
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!url || !key) {
+  // Says exactly which value is missing (never prints the key itself)
+  const missing = [!url && "NEXT_PUBLIC_SUPABASE_URL", !key && "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"].filter(Boolean).join(" and ");
   throw new Error(
-    "Missing Supabase keys. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY to .env.local (and to Vercel → Settings → Environment Variables).",
+    `Missing ${missing}. Put .env.local next to package.json, then stop and restart "npm run dev". On Vercel, add it in Settings → Environment Variables.`,
   );
 }
 
