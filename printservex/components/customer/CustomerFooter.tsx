@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { getShop } from "@/lib/shop-data";
 
-// Navy footer: shop address, phone and hours, plus the legal links
+// Navy footer: shop address, phone and hours, the legal links and a quiet staff sign-in link
 export async function CustomerFooter() {
   const shop = await getShop();
   return (
@@ -24,12 +24,16 @@ export async function CustomerFooter() {
             </span>
           </div>
         </div>
-        <nav aria-label="Legal" className="flex gap-6">
+        <nav aria-label="Footer" className="flex flex-wrap gap-x-6">
           <Link href="/privacy" className="py-3 text-white hover:underline sm:py-0">
             Privacy notice
           </Link>
           <Link href="/terms" className="py-3 text-white hover:underline sm:py-0">
             Terms
+          </Link>
+          {/* For shop staff; customers never need an account */}
+          <Link href="/staff/login" className="py-3 text-[#c9d2e3] hover:text-white hover:underline sm:py-0">
+            Staff sign in
           </Link>
         </nav>
       </div>
