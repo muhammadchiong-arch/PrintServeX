@@ -18,4 +18,8 @@ if (!url || !key) {
   );
 }
 
+// Also used by the signed-in staff client (lib/supabase-server.ts) and proxy.ts
+export const SUPABASE_URL = url;
+export const SUPABASE_KEY = key;
+
 export const supabase = createClient(url, key);

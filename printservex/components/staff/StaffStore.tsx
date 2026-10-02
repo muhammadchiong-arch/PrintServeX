@@ -11,7 +11,6 @@ import { formatPeso } from "@/lib/format";
 import { makeRef, PAYMENT_LABELS, type Order, type PaymentMethod } from "@/lib/orders";
 import { SAMPLE_NOW, SAMPLE_ORDERS } from "@/lib/sample/orders";
 import {
-  CURRENT_USER_ID,
   SAMPLE_ACTIVITY,
   SAMPLE_INVENTORY,
   SAMPLE_USERS,
@@ -59,11 +58,15 @@ export function useStaff(): StaffContext {
   return v;
 }
 
-const initial: StaffData = { orders: SAMPLE_ORDERS, inventory: SAMPLE_INVENTORY, users: SAMPLE_USERS, activity: SAMPLE_ACTIVITY };
-
-export function StaffStoreProvider({ children }: { children: React.ReactNode }) {
-  const [data, setData] = useState<StaffData>(initial);
-  const me = data.users.find((u) => u.id === CURRENT_USER_ID) ?? data.users[0];
+// `me` = the real signed-in staff member (from Supabase). They're added to the top of the
+// sample users so the Users page lists them too.
+export function StaffStoreProvider({ me, children }: { me: StaffUser; children: React.ReactNode }) {
+  const [data, setData] = useState<StaffData>(() => ({
+    orders: SAMPLE_ORDERS,
+    inventory: SAMPLE_INVENTORY,
+    users: [me, ...SAMPLE_USERS.filter((u) => u.username !== me.username)],
+    activity: SAMPLE_ACTIVITY,
+  }));
 
   // Adds a line to the activity / audit log
   const log = useCallback(

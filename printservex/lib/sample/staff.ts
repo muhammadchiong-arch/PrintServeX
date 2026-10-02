@@ -123,9 +123,6 @@ export const SAMPLE_USERS: StaffUser[] = [
   { id: "u4", name: "Liza Manalo", username: "liza.manalo", role: "Staff", active: false, lastSignIn: t("07-14", "14:10") },
 ];
 
-// The signed-in staff member (placeholder until Supabase Auth)
-export const CURRENT_USER_ID = "u1";
-
 export const SAMPLE_ACTIVITY: ActivityEntry[] = [
   { at: t("10-01", "11:40"), who: "Rhea Ocampo", action: "Order completed", details: "PSX-20261001-0028 · paid ₱36.00 cash" },
   { at: t("10-01", "11:37"), who: "Maricel Santos", action: "Status changed", details: "PSX-20261001-0042 · Processing → Ready for Pickup" },

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, LogOut, User } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { signOut } from "@/lib/staff-auth-actions";
 
 // "Maricel Santos" → "MS"
 function initials(name: string): string {
@@ -58,11 +59,13 @@ export function ProfileMenu({ name }: { name: string }) {
             <User size={16} aria-hidden className="text-slate" />
             Profile
           </Link>
-          {/* Log out will call Supabase Auth once staff login is wired up */}
-          <Link role="menuitem" href="/staff/login" onClick={() => setOpen(false)} className="flex items-center gap-2 px-3 py-2 hover:bg-bg">
-            <LogOut size={16} aria-hidden className="text-slate" />
-            Log out
-          </Link>
+          {/* A form, so log out works on the server (clears the sign-in cookies) */}
+          <form action={signOut}>
+            <button type="submit" role="menuitem" className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-bg">
+              <LogOut size={16} aria-hidden className="text-slate" />
+              Log out
+            </button>
+          </form>
         </div>
       )}
     </div>
