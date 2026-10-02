@@ -1,16 +1,19 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowLeft, CircleCheck, CircleX, MessageSquareText } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { formatPeso } from "@/lib/format";
 import { estimatedTotal, itemTotal, PAYMENT_LABELS, type Order } from "@/lib/orders";
-import { SHOP } from "@/lib/shop";
+import { useShop } from "@/components/ShopProvider";
 import { StatusTimeline } from "./StatusTimeline";
 
 const sectionTitle = "text-xs font-semibold uppercase tracking-[0.06em] text-slate";
 
 // C5: what the customer sees after a successful lookup
 export function OrderStatusView({ order }: { order: Order }) {
+  const shop = useShop();
   const estimate = estimatedTotal(order);
   const finalChanged = order.final && order.final.amount !== estimate;
 
@@ -32,7 +35,7 @@ export function OrderStatusView({ order }: { order: Order }) {
         <p className="flex gap-2 rounded-lg bg-ready-tint p-3 text-sm text-[#5b21b6]">
           <MessageSquareText size={20} aria-hidden className="shrink-0" />
           <span>
-            <b>Pickup note:</b> {SHOP.pickupNote}
+            <b>Pickup note:</b> {shop.pickupNote}
           </span>
         </p>
       )}
@@ -40,7 +43,7 @@ export function OrderStatusView({ order }: { order: Order }) {
         <p className="flex gap-2 rounded-lg bg-cancelled-tint p-3 text-sm text-cancelled">
           <CircleX size={20} aria-hidden className="shrink-0" />
           <span>
-            <b>Reason:</b> {order.cancelReason} Questions? Call {SHOP.phone}.
+            <b>Reason:</b> {order.cancelReason} Questions? Call {shop.phone}.
           </span>
         </p>
       )}

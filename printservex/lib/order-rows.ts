@@ -9,7 +9,7 @@ import type { OrderStatus } from "@/lib/status";
 export const ORDER_SELECT =
   "ref, source, customer_name, customer_phone, customer_email, status, estimated_total, final_amount, final_note, " +
   "cancel_reason, remarks, payment_method, paid_amount, paid_at, created_at, " +
-  "order_items(position, file_name, file_size_bytes, size_name, paper_name, color, pages, copies, binding, lamination, rate), " +
+  "order_items(position, file_name, file_size_bytes, size_name, paper_name, color, pages, copies, binding, lamination, rate, binding_price, lamination_price), " +
   "order_status_history(status, note, actor_label, at)";
 
 export type OrderRow = {
@@ -40,6 +40,8 @@ export type OrderRow = {
     binding: boolean;
     lamination: boolean;
     rate: number;
+    binding_price: number;
+    lamination_price: number;
   }[];
   order_status_history: { status: OrderStatus; note: string | null; actor_label: string; at: string }[];
 };
@@ -63,6 +65,7 @@ export function rowToOrder(row: OrderRow): Order {
         binding: i.binding,
         lamination: i.lamination,
         rate: Number(i.rate),
+        addOnsTotal: Math.round((Number(i.binding_price) + Number(i.lamination_price)) * 100) / 100,
       })),
     status: row.status,
     history: [...row.order_status_history]

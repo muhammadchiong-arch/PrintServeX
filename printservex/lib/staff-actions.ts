@@ -6,6 +6,7 @@
 // Account changes need the service role (Supabase Auth admin), so they check for an admin here.
 
 import { createClient } from "@supabase/supabase-js";
+import { FAILED, fromDb, NOT_ADMIN, SIGNED_OUT, staffRpc as rpc, type ActionResult, type Fail } from "@/lib/action-results";
 import type { PaymentMethod } from "@/lib/orders";
 import type { Role } from "@/lib/staff-types";
 import { getCurrentStaff } from "@/lib/staff-session";
@@ -14,28 +15,7 @@ import { ORDER_FILES_BUCKET, supabaseAdmin } from "@/lib/supabase-admin";
 import { createStaffClient } from "@/lib/supabase-server";
 import { makeTempPassword } from "@/lib/temp-password";
 
-type Fail = { ok: false; error: string };
-export type ActionResult = { ok: true } | Fail;
-
-const SIGNED_OUT: Fail = { ok: false, error: "You were signed out. Sign in again, then retry." };
-const NOT_ADMIN: Fail = { ok: false, error: "Only the shop owner (admin) can do this." };
-const FAILED: Fail = { ok: false, error: "That didn't save. Check your connection and try again." };
-
-// Messages we raise ourselves in the database functions are safe to show.
-// Anything else (a bug, a network problem) gets a general message and goes to the server log.
-function fromDb(error: { code?: string; message: string } | null, where: string): ActionResult {
-  if (!error) return { ok: true };
-  if (error.code === "P0001" || error.code === "42501") return { ok: false, error: error.message };
-  console.error(`${where}:`, error.message);
-  return FAILED;
-}
-
-async function rpc(fn: string, args: Record<string, unknown>): Promise<ActionResult> {
-  if (!(await getCurrentStaff())) return SIGNED_OUT;
-  const supabase = await createStaffClient();
-  const { error } = await supabase.rpc(fn, args);
-  return fromDb(error, fn);
-}
+export type { ActionResult } from "@/lib/action-results";
 
 const isRef = (v: unknown): v is string => typeof v === "string" && /^PSX-\d{8}-\d{4}$/.test(v);
 

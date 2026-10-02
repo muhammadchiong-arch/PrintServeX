@@ -1,5 +1,5 @@
-import { findRate } from "@/lib/price";
-import { getPricingData } from "@/lib/pricing-data";
+import { findRate, type AddOns } from "@/lib/price";
+import { getPricingData, toPrices } from "@/lib/pricing-data";
 
 export type PriceListRow = {
   sizeId: string;
@@ -11,6 +11,7 @@ export type PriceListRow = {
 export type PriceList = {
   paperTypeName: string; // the paper type the table shows, e.g. "Bond 80gsm"
   rows: PriceListRow[];
+  addOns: AddOns;
 };
 
 /**
@@ -23,11 +24,13 @@ export async function getPriceList(): Promise<PriceList | null> {
   const data = await getPricingData();
   if (!data) return null;
 
+  const { addOns } = toPrices(data);
   const basicType = data.types[0];
-  if (!basicType) return { paperTypeName: "", rows: [] };
+  if (!basicType) return { paperTypeName: "", rows: [], addOns };
 
   return {
     paperTypeName: basicType.name,
+    addOns,
     rows: data.sizes.map((size) => ({
       sizeId: size.id,
       label: size.label,

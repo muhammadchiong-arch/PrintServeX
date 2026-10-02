@@ -2,14 +2,15 @@ import type { Metadata } from "next";
 import { CircleAlert } from "lucide-react";
 import { AdminOnly } from "@/components/staff/AdminOnly";
 import { Pricing } from "@/components/staff/pricing/Pricing";
-import { getPricingData } from "@/lib/pricing-data";
+import { readPricing } from "@/lib/pricing-data";
+import { createStaffClient } from "@/lib/supabase-server";
 
 export const metadata: Metadata = { title: "Pricing & options · PrintServeX Staff" };
-export const revalidate = 300;
 
-// S9 (admin only). Reads the real sizes, paper types and prices from Supabase.
+// S9 (admin only). Reads the real sizes, paper types, prices and add-ons from Supabase,
+// as the signed-in staff member, so archived options are included.
 export default async function PricingPage() {
-  const data = await getPricingData();
+  const data = await readPricing(await createStaffClient(), { all: true });
   return (
     <AdminOnly>
       {data ? (

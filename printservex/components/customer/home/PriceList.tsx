@@ -1,26 +1,26 @@
 import { CircleAlert } from "lucide-react";
-import { ADD_ONS } from "@/lib/add-ons";
 import { formatPeso } from "@/lib/format";
 import { getPriceList } from "@/lib/price-list";
-import { SHOP } from "@/lib/shop";
+import type { AddOns } from "@/lib/price";
+import { getShop } from "@/lib/shop-data";
 
 const cellX = "px-4 lg:px-6";
 const priceCol = "w-20 text-right lg:w-[120px]";
 
-function AddOnNote({ paperTypeName }: { paperTypeName?: string }) {
-  const { lamination, binding } = ADD_ONS;
+function AddOnNote({ paperTypeName, addOns }: { paperTypeName?: string; addOns: AddOns }) {
+  const offered = [addOns.lamination, addOns.binding].flatMap((a) => (a ? [`${a.label} ${formatPeso(a.price)} ${a.unit}`] : []));
+  if (!paperTypeName && offered.length === 0) return null;
   return (
     <p className={`border-t border-border py-3 text-sm text-slate lg:py-3.5 ${cellX}`}>
-      {paperTypeName && <span className="max-lg:hidden">{paperTypeName} prices shown · </span>}
-      {lamination.label} {formatPeso(lamination.price)} {lamination.unit} · {binding.label} {formatPeso(binding.price)}{" "}
-      {binding.unit}
+      {paperTypeName && <span className="max-lg:hidden">{paperTypeName} prices shown{offered.length > 0 && " · "}</span>}
+      {offered.join(" · ")}
     </p>
   );
 }
 
 // Server component: reads prices from Supabase every time the page is rebuilt
 export async function PriceList() {
-  const list = await getPriceList();
+  const [list, shop] = await Promise.all([getPriceList(), getShop()]);
 
   // Error state: Supabase could not be reached
   if (!list) {
@@ -28,7 +28,7 @@ export async function PriceList() {
       <div role="alert" className="flex gap-3 rounded-xl bg-surface p-4 shadow-card lg:p-6">
         <CircleAlert size={20} aria-hidden className="mt-0.5 shrink-0 text-cancelled" />
         <p className="text-sm">
-          We couldn&apos;t load the price list right now. Please refresh the page, or call us at {SHOP.phone}.
+          We couldn&apos;t load the price list right now. Please refresh the page, or call us at {shop.phone}.
         </p>
       </div>
     );
@@ -71,7 +71,7 @@ export async function PriceList() {
           ))}
         </tbody>
       </table>
-      <AddOnNote paperTypeName={list.paperTypeName} />
+      <AddOnNote paperTypeName={list.paperTypeName} addOns={list.addOns} />
     </div>
   );
 }

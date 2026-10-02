@@ -7,15 +7,15 @@ import { NumberStepper } from "@/components/ui/NumberStepper";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Select } from "@/components/ui/Select";
 import { ToggleChip } from "@/components/ui/ToggleChip";
-import { ADD_ONS } from "@/lib/add-ons";
 import { formatFileSize, isImage } from "@/lib/files";
 import { formatPeso } from "@/lib/format";
-import type { FilePrice, PrintOptions } from "@/lib/price";
+import type { AddOns, FilePrice, PrintOptions } from "@/lib/price";
 import type { Catalog, OrderFile } from "./types";
 
 type FileCardProps = {
   item: OrderFile;
   price: FilePrice | null; // null = this combination isn't offered
+  addOns: AddOns; // null = not offered right now
   catalog: Catalog;
   onChange: (patch: Partial<PrintOptions>) => void;
   onRemove: () => void;
@@ -24,7 +24,7 @@ type FileCardProps = {
 const MAX_PAGES = 2000;
 
 // One uploaded file with all its print options
-export function FileCard({ item, price, catalog, onChange, onRemove }: FileCardProps) {
+export function FileCard({ item, price, addOns, catalog, onChange, onRemove }: FileCardProps) {
   const o = item.options;
   const Icon = isImage(item.file.name) ? ImageIcon : FileText;
   // The Pages box keeps its own text so the customer can clear it and type a new number
@@ -99,17 +99,34 @@ export function FileCard({ item, price, catalog, onChange, onRemove }: FileCardP
         <NumberStepper label="Copies" value={o.copies} onChange={(copies) => onChange({ copies })} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-sm font-medium max-lg:sr-only">Add-ons</span>
-        <ToggleChip pressed={o.binding} onToggle={() => onChange({ binding: !o.binding })}>
-          {ADD_ONS.binding.label} +{formatPeso(ADD_ONS.binding.price)}
-        </ToggleChip>
-        <ToggleChip pressed={o.lamination} onToggle={() => onChange({ lamination: !o.lamination })}>
-          {ADD_ONS.lamination.label} +{formatPeso(ADD_ONS.lamination.price)}/sheet
-        </ToggleChip>
-      </div>
+      {(addOns.binding || addOns.lamination) && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="mr-1 text-sm font-medium max-lg:sr-only">Add-ons</span>
+          {addOns.binding && (
+            <ToggleChip pressed={o.binding} onToggle={() => onChange({ binding: !o.binding })}>
+              {addOns.binding.label} +{formatPeso(addOns.binding.price)}
+            </ToggleChip>
+          )}
+          {addOns.lamination && (
+            <ToggleChip pressed={o.lamination} onToggle={() => onChange({ lamination: !o.lamination })}>
+              {addOns.lamination.label} +{formatPeso(addOns.lamination.price)}/sheet
+            </ToggleChip>
+          )}
+        </div>
+      )}
 
-      {!price && (
+      {/* An add-on the shop stopped offering while this form was open */}
+      {((o.binding && !addOns.binding) || (o.lamination && !addOns.lamination)) && (
+        <p role="alert" className="flex items-center gap-2 rounded-lg bg-cancelled-tint p-3 text-sm text-cancelled">
+          <CircleAlert size={20} aria-hidden className="shrink-0" />
+          An add-on you picked is no longer offered.
+          <button type="button" className="font-semibold underline" onClick={() => onChange({ binding: o.binding && Boolean(addOns.binding), lamination: o.lamination && Boolean(addOns.lamination) })}>
+            Remove it
+          </button>
+        </p>
+      )}
+
+      {!price && !((o.binding && !addOns.binding) || (o.lamination && !addOns.lamination)) && (
         <p role="alert" className="flex gap-2 rounded-lg bg-cancelled-tint p-3 text-sm text-cancelled">
           <CircleAlert size={20} aria-hidden className="shrink-0" />
           We don&apos;t offer this size, paper and color together. Choose another paper type or size.

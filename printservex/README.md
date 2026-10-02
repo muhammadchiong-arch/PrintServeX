@@ -41,6 +41,7 @@ Next.js (App Router) + TypeScript + Tailwind CSS + Supabase.
 4. `supabase/005_staff_login.sql` – sign-in lock and last sign-in
 5. `supabase/005b_first_admin.sql` – the shop owner's account (read the steps at the top first)
 6. `supabase/006_staff_work.sql` – staff actions: order status, payments, final price, stock, temporary passwords
+7. `supabase/007_pricing_shop.sql` – saving Pricing & options and Shop info (admin only)
 
 After that, sign in as the owner and add the other staff on the Users page.
 
@@ -55,7 +56,10 @@ Staff accounts are only made by the owner, never by sign-up.
   profile password and the audit log. No sample data: everything comes from Supabase and
   starts empty. Data loads in the portal layout (`lib/staff-data.ts`), every change is a
   Server Action in `lib/staff-actions.ts`, and the portal reloads its data every minute.
-- **Not saved yet:** edits on Pricing & options and Settings → Shop info (the pages say so).
+- **Pricing & options and Shop info:** saved by the admin in Supabase (`lib/admin-actions.ts`).
+  Customer pages are rebuilt right after a save. Add-on prices come from the `add_ons` table,
+  and each order keeps the prices it was placed with. `lib/shop.ts` only holds a fallback
+  for when the database can't be reached.
 
 ## Where things are
 
@@ -64,5 +68,6 @@ Staff accounts are only made by the owner, never by sign-up.
 - `app/(staff)/staff/(portal)/` – staff pages with the navy sidebar
 - `components/ui/` – reusable building blocks (Button, Input, Modal, …)
 - `lib/price.ts` – all price calculations
-- `lib/pricing-data.ts` – reads paper sizes, types and prices from Supabase (column names at the top)
+- `lib/pricing-data.ts` – reads paper sizes, types, prices and add-ons from Supabase (column names at the top)
+- `lib/shop-data.ts` / `components/ShopProvider.tsx` – shop details for server / browser code
 - `lib/orders.ts` – order types and business rules (next status, cancel rules, totals)

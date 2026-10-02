@@ -2,13 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { submitOrder } from "@/lib/customer-orders";
-import type { PriceRule } from "@/lib/price";
+import type { Prices } from "@/lib/price";
 import { OrderWizard } from "./OrderWizard";
 import type { Catalog } from "./types";
 
 // C2 for customers: on submit, upload the files, save the order on the server,
 // then open the confirmation page (C3)
-export function CustomerOrderForm(props: Catalog & { rules: PriceRule[] }) {
+export function CustomerOrderForm(props: Catalog & { prices: Prices }) {
   const router = useRouter();
   return (
     <OrderWizard

@@ -1,4 +1,4 @@
-import { SHOP } from "@/lib/shop";
+import { getShop } from "@/lib/shop-data";
 
 // Decorative desktop-only picture: a claim stub lying on printed pages.
 // Built from plain shapes (no image file). Screen readers skip it (aria-hidden).
@@ -24,7 +24,8 @@ function RegistrationMark({ className }: { className: string }) {
   );
 }
 
-export function ClaimStubArt() {
+export async function ClaimStubArt() {
+  const shop = await getShop();
   return (
     <div aria-hidden className="relative hidden h-[460px] overflow-hidden rounded-xl bg-[#f3f1ec] lg:block">
       <RegistrationMark className="left-5 top-5" />
@@ -77,7 +78,7 @@ export function ClaimStubArt() {
         </div>
       </div>
 
-      <span className="absolute bottom-6 left-14 font-mono text-[11px] uppercase tracking-[0.08em] text-slate">{SHOP.area}</span>
+      <span className="absolute bottom-6 left-14 font-mono text-[11px] uppercase tracking-[0.08em] text-slate">{shop.area}</span>
     </div>
   );
 }

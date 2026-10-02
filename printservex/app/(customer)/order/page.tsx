@@ -4,8 +4,8 @@ import Link from "next/link";
 import { CircleAlert } from "lucide-react";
 import { CustomerOrderForm } from "@/components/order/CustomerOrderForm";
 import { buttonClasses } from "@/components/ui/Button";
-import { getPricingData } from "@/lib/pricing-data";
-import { SHOP } from "@/lib/shop";
+import { getPricingData, toPrices } from "@/lib/pricing-data";
+import { getShop } from "@/lib/shop-data";
 
 export const metadata: Metadata = { title: "New order · PrintServeX" };
 
@@ -14,6 +14,7 @@ export const revalidate = 300;
 
 // Server part: loads the price data once, then hands it to the form that runs in the browser
 export default async function NewOrderPage() {
+  const shop = await getShop();
   const data = await getPricingData();
 
   // Can't take orders without prices: show a clear message instead of a broken form
@@ -23,7 +24,7 @@ export default async function NewOrderPage() {
         <CircleAlert size={32} aria-hidden className="text-cancelled" />
         <h1 className="text-2xl">We can&apos;t take orders right now</h1>
         <p className="text-slate">
-          Please try again in a few minutes, or call us at {SHOP.phone}.
+          Please try again in a few minutes, or call us at {shop.phone}.
         </p>
         <Link href="/" className={buttonClasses("secondary", "lg")}>
           Back to home
@@ -35,7 +36,7 @@ export default async function NewOrderPage() {
   // Suspense is needed because the form reads the step from the URL (?step=2)
   return (
     <Suspense>
-      <CustomerOrderForm sizes={data.sizes} types={data.types} rules={data.rules} />
+      <CustomerOrderForm sizes={data.sizes} types={data.types} prices={toPrices(data)} />
     </Suspense>
   );
 }

@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/Card";
 import { formatPeso } from "@/lib/format";
 import type { CustomerDetails } from "@/lib/order-details";
-import { priceFile, type OrderPrice, type PriceRule } from "@/lib/price";
+import { priceFile, type OrderPrice, type Prices } from "@/lib/price";
 import { describeOptions, type Catalog, type OrderFile } from "./types";
 
 type ReviewStepProps = {
@@ -9,7 +9,7 @@ type ReviewStepProps = {
   files: OrderFile[];
   totals: OrderPrice;
   catalog: Catalog;
-  rules: PriceRule[];
+  prices: Prices;
   onEdit: (step: number) => void;
 };
 
@@ -25,7 +25,7 @@ function CardTitle({ title, onEdit }: { title: string; onEdit: () => void }) {
 }
 
 // Step 3: everything the customer entered, before they submit
-export function ReviewStep({ details, files, totals, catalog, rules, onEdit }: ReviewStepProps) {
+export function ReviewStep({ details, files, totals, catalog, prices, onEdit }: ReviewStepProps) {
   return (
     <div className="flex flex-col gap-3 lg:gap-4">
       <Card padding="sm" className="flex flex-col gap-1 lg:p-6">
@@ -44,7 +44,7 @@ export function ReviewStep({ details, files, totals, catalog, rules, onEdit }: R
                 <p className="truncate text-sm font-semibold">{f.file.name}</p>
                 <p className="text-xs text-slate">{describeOptions(f.options, catalog)}</p>
               </div>
-              <span className="tabular shrink-0 text-sm font-semibold">{formatPeso(priceFile(rules, f.options)?.total ?? 0)}</span>
+              <span className="tabular shrink-0 text-sm font-semibold">{formatPeso(priceFile(prices, f.options)?.total ?? 0)}</span>
             </li>
           ))}
         </ul>

@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/Button";
 import { formatPeso } from "@/lib/format";
-import { priceFile, type OrderPrice, type PriceRule } from "@/lib/price";
+import { priceFile, type OrderPrice, type Prices } from "@/lib/price";
 import type { OrderFile } from "./types";
 
 export type SummaryAction = {
@@ -13,7 +13,7 @@ export type SummaryAction = {
 type PriceSummaryProps = {
   files: OrderFile[];
   totals: OrderPrice;
-  rules: PriceRule[];
+  prices: Prices;
   primary: SummaryAction;
   back?: { label: string; onClick: () => void };
   compact?: boolean; // staff walk-in: smaller buttons, always visible
@@ -22,7 +22,7 @@ type PriceSummaryProps = {
 const row = "flex justify-between gap-3 text-sm";
 
 // Desktop: price card on the right that stays in view while scrolling
-export function PriceSummary({ files, totals, rules, primary, back, compact = false }: PriceSummaryProps) {
+export function PriceSummary({ files, totals, prices, primary, back, compact = false }: PriceSummaryProps) {
   const size = compact ? "md" : "lg";
   return (
     <aside
@@ -38,7 +38,7 @@ export function PriceSummary({ files, totals, rules, primary, back, compact = fa
       {files.length === 0 && <p className="text-sm text-slate">No files yet. You&apos;ll add them in the next step.</p>}
 
       {files.map((f) => {
-        const p = f.status === "ready" ? priceFile(rules, f.options) : null;
+        const p = f.status === "ready" ? priceFile(prices, f.options) : null;
         return (
           <div key={f.id} className="flex flex-col gap-1">
             <div className={row}>

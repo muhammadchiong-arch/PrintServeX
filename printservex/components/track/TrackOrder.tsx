@@ -6,7 +6,7 @@ import { SearchX } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { REF_PATTERN } from "@/lib/orders";
-import { SHOP } from "@/lib/shop";
+import { useShop } from "@/components/ShopProvider";
 import type { TrackResult } from "@/lib/track";
 import { OrderStatusView } from "./OrderStatusView";
 
@@ -23,6 +23,7 @@ type TrackOrderProps = {
  * Keeping the lookup in the URL means a refresh keeps the status page open.
  */
 export function TrackOrder({ result, initialRef, initialCode }: TrackOrderProps) {
+  const shop = useShop();
   const router = useRouter();
   const [ref, setRef] = useState(initialRef);
   const [code, setCode] = useState(initialCode);
@@ -59,7 +60,7 @@ export function TrackOrder({ result, initialRef, initialCode }: TrackOrderProps)
         <p role="alert" className="flex gap-2 rounded-lg bg-cancelled-tint p-3 text-sm text-cancelled">
           <SearchX size={20} aria-hidden className="shrink-0" />
           <span>
-            <b>No matching order.</b> Check both entries and try again, or call the shop at {SHOP.phone}.
+            <b>No matching order.</b> Check both entries and try again, or call the shop at {shop.phone}.
           </span>
         </p>
       )}
@@ -67,7 +68,7 @@ export function TrackOrder({ result, initialRef, initialCode }: TrackOrderProps)
         <p role="alert" className="flex gap-2 rounded-lg bg-cancelled-tint p-3 text-sm text-cancelled">
           <SearchX size={20} aria-hidden className="shrink-0" />
           <span>
-            <b>We can&apos;t check orders right now.</b> Please try again in a few minutes, or call the shop at {SHOP.phone}.
+            <b>We can&apos;t check orders right now.</b> Please try again in a few minutes, or call the shop at {shop.phone}.
           </span>
         </p>
       )}

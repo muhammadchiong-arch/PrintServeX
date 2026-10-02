@@ -1,71 +1,110 @@
 "use client";
 
 import { useState } from "react";
-import { Archive, ArchiveRestore, CircleCheck, Info, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Archive, ArchiveRestore, CircleCheck, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { Tabs } from "@/components/ui/Tabs";
 import { useToast } from "@/components/ui/Toast";
-import { ADD_ONS } from "@/lib/add-ons";
+import { saveAddOn, saveOption, savePrices as savePricesOnServer, setOptionActive, type PriceCell } from "@/lib/admin-actions";
 import { cn } from "@/lib/cn";
 import { formatPeso } from "@/lib/format";
-import { findRate, type PriceRule } from "@/lib/price";
+import { findRate, type AddOnKey } from "@/lib/price";
 import type { PricingData } from "@/lib/pricing-data";
 import { PageTitle, tableHead } from "../parts";
-import { OptionModal, type OptionKind, type OptionRow } from "./OptionModal";
+import { OptionModal, type OptionDraft, type OptionKind } from "./OptionModal";
 
 type Tab = "sizes" | "papers" | "matrix" | "addons";
+// One row on the Paper sizes / Paper types / Add-ons tabs
+type Row = { id: string; name: string; detail: string; archived: boolean; draft: OptionDraft };
+type Result = { ok: true } | { ok: false; error: string } | null;
 
-const ADD_LABEL: Record<Exclude<Tab, "matrix">, string> = { sizes: "Add size", papers: "Add paper type", addons: "Add add-on" };
-const DETAIL_COL: Record<Exclude<Tab, "matrix">, string> = { sizes: "Dimensions", papers: "Available sizes", addons: "Price" };
+// Add-ons can't be added: the price math only knows binding and lamination
+const ADD_LABEL = { sizes: "Add size", papers: "Add paper type" } as const;
+const DETAIL_COL: Record<OptionKind, string> = { sizes: "Dimensions", papers: "Available sizes", addons: "Price" };
+const ARCHIVE_KIND = { sizes: "size", papers: "type", addons: "addon" } as const;
+const NO_SERVER = "We couldn't reach the server. Check your connection and try again.";
 
-// "A4 (8.27 × 11.69 in)" → "8.27 × 11.69 in"
-const dims = (label: string) => label.match(/\((.*)\)$/)?.[1] ?? "—";
-
-// S9. Business rule: options are archived, never deleted, so old orders keep their details.
+// S9 (admin only). Shows the real options from Supabase, archived ones too.
+// Every change is saved on the server (lib/admin-actions.ts), then the page reloads its data.
+// Business rule: options are archived, never deleted, so old orders keep their details.
 export function Pricing({ data }: { data: PricingData }) {
+  const router = useRouter();
   const toast = useToast();
   const [tab, setTab] = useState<Tab>("matrix");
-  const [rows, setRows] = useState<Record<Exclude<Tab, "matrix">, OptionRow[]>>(() => ({
-    sizes: data.sizes.map((s) => ({ name: s.name, detail: dims(s.label), archived: false })),
+  const [editing, setEditing] = useState<{ kind: OptionKind; row: Row | null } | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const activeSizes = data.sizes.filter((s) => s.active);
+  const activeTypes = data.types.filter((t) => t.active);
+  const blank: OptionDraft = { name: "", dimensions: "", price: "", unit: "" };
+  const rows: Record<OptionKind, Row[]> = {
+    sizes: data.sizes.map((s) => ({ id: s.id, name: s.name, detail: s.dimensions || "—", archived: !s.active, draft: { ...blank, name: s.name, dimensions: s.dimensions } })),
     papers: data.types.map((t) => ({
+      id: t.id,
       name: t.name,
-      detail: data.sizes.filter((s) => data.rules.some((r) => r.typeId === t.id && r.sizeId === s.id)).map((s) => s.name).join(", ") || "—",
-      archived: false,
+      detail: activeSizes.filter((s) => data.rules.some((r) => r.typeId === t.id && r.sizeId === s.id)).map((s) => s.name).join(", ") || "—",
+      archived: !t.active,
+      draft: { ...blank, name: t.name },
     })),
-    addons: Object.values(ADD_ONS).map((a) => ({ name: a.label, detail: `${formatPeso(a.price)} ${a.unit}`, archived: false })),
-  }));
-  const [editing, setEditing] = useState<{ kind: OptionKind; index: number | null } | null>(null);
+    addons: data.addOnList.map((a) => ({
+      id: a.key,
+      name: a.label,
+      detail: `${formatPeso(a.price)} ${a.unit}`,
+      archived: !a.active,
+      draft: { ...blank, name: a.label, price: a.price.toFixed(2), unit: a.unit },
+    })),
+  };
+
+  // Shows the result of a server action, then reloads the data. true = saved.
+  const done = (result: Result, message: string) => {
+    if (!result?.ok) {
+      toast({ kind: "error", message: result?.error ?? NO_SERVER });
+      return false;
+    }
+    toast({ message });
+    router.refresh();
+    return true;
+  };
 
   // Price per page grid for the chosen paper type, kept as text while typing
-  const [typeId, setTypeId] = useState(data.types[0]?.id ?? "");
-  const [rules, setRules] = useState<PriceRule[]>(data.rules);
+  const [typeId, setTypeId] = useState(activeTypes[0]?.id ?? "");
   const [draft, setDraft] = useState<Record<string, string>>({});
-  const cellKey = (sizeId: string, color: boolean) => `${sizeId}|${typeId}|${color ? "c" : "b"}`;
-  const cellValue = (sizeId: string, color: boolean) => draft[cellKey(sizeId, color)] ?? findRate(rules, { sizeId, typeId, color })?.toFixed(2) ?? "";
+  const cellKey = (sizeId: string, color: boolean) => `${sizeId}|${color ? "c" : "b"}`;
+  const cellValue = (sizeId: string, color: boolean) => draft[cellKey(sizeId, color)] ?? findRate(data.rules, { sizeId, typeId, color })?.toFixed(2) ?? "";
   const dirty = Object.keys(draft).length > 0;
   const invalid = Object.values(draft).some((v) => v !== "" && !(Number(v) >= 0));
 
-  const savePrices = () => {
-    const next = [...rules];
-    for (const [key, text] of Object.entries(draft)) {
-      const [sizeId, tId, c] = key.split("|");
-      const color = c === "c";
-      const i = next.findIndex((r) => r.sizeId === sizeId && r.typeId === tId && r.color === color);
-      if (text === "") {
-        if (i >= 0) next.splice(i, 1); // empty = this combination is not offered
-      } else if (i >= 0) next[i] = { ...next[i], pricePerPage: Number(text) };
-      else next.push({ sizeId, typeId: tId, color, pricePerPage: Number(text) });
-    }
-    setRules(next);
-    setDraft({});
-    toast({ message: "Changed on this page only. Saving prices to the database comes in the next step." });
+  const savePrices = async () => {
+    // Empty = this combination is not offered
+    const cells: PriceCell[] = Object.entries(draft).map(([key, text]) => {
+      const [sizeId, c] = key.split("|");
+      return { sizeId, color: c === "c", price: text === "" ? null : Number(text) };
+    });
+    setSaving(true);
+    const result = await savePricesOnServer(typeId, cells).catch(() => null);
+    setSaving(false);
+    if (done(result, "Prices saved. New orders use the new prices; existing orders keep theirs.")) setDraft({});
   };
 
-  const toggleArchive = (kind: Exclude<Tab, "matrix">, index: number) => {
-    const row = rows[kind][index];
-    setRows({ ...rows, [kind]: rows[kind].map((r, i) => (i === index ? { ...r, archived: !r.archived } : r)) });
-    toast({ message: row.archived ? `${row.name} restored.` : `${row.name} archived. Past orders keep it.` });
+  const toggleArchive = async (kind: OptionKind, row: Row) => {
+    setBusyId(row.id);
+    const result = await setOptionActive(ARCHIVE_KIND[kind], row.id, row.archived).catch(() => null);
+    setBusyId(null);
+    done(result, row.archived ? `${row.name} restored.` : `${row.name} archived. Past orders keep it.`);
+  };
+
+  const saveRow = async (kind: OptionKind, row: Row | null, f: OptionDraft) => {
+    let result: Result;
+    if (kind === "addons") {
+      if (!row) return false;
+      result = await saveAddOn(row.id as AddOnKey, f.name, Number(f.price), f.unit).catch(() => null);
+    } else {
+      result = await saveOption(kind === "sizes" ? "size" : "type", row?.id ?? null, f.name, f.dimensions).catch(() => null);
+    }
+    return done(result, `${f.name} saved.`);
   };
 
   return (
@@ -73,11 +112,6 @@ export function Pricing({ data }: { data: PricingData }) {
       <PageTitle actions={<span className="text-[13px] text-slate">Changes apply to new orders only. Existing orders keep their price.</span>}>
         Pricing &amp; options
       </PageTitle>
-
-      <p className="flex items-center gap-2 rounded-lg border border-dashed border-[#b9c6da] px-3 py-2 text-sm text-slate">
-        <Info size={16} aria-hidden className="shrink-0" />
-        Prices are loaded from Supabase. Edits on this page aren&apos;t saved to the database yet.
-      </p>
 
       <div className="overflow-hidden rounded-xl bg-surface shadow-card">
         <div className="flex items-center border-b border-border pr-4">
@@ -94,8 +128,8 @@ export function Pricing({ data }: { data: PricingData }) {
               { value: "addons", label: "Add-ons" },
             ]}
           />
-          {tab !== "matrix" && (
-            <Button size="md" className="h-8 px-2.5 text-[13px]" onClick={() => setEditing({ kind: tab, index: null })}>
+          {(tab === "sizes" || tab === "papers") && (
+            <Button size="md" className="h-8 px-2.5 text-[13px]" onClick={() => setEditing({ kind: tab, row: null })}>
               <Plus size={14} aria-hidden />
               {ADD_LABEL[tab]}
             </Button>
@@ -106,7 +140,10 @@ export function Pricing({ data }: { data: PricingData }) {
           <>
             <div className="flex items-end gap-3 p-4">
               <div className="w-60">
-                <Select size="md" label="Paper type" value={typeId} onChange={(e) => setTypeId(e.target.value)} options={data.types.map((t) => ({ value: t.id, label: t.name }))} />
+                <Select size="md" label="Paper type" value={typeId} onChange={(e) => {
+                    setTypeId(e.target.value);
+                    setDraft({}); // unsaved prices belong to the previous paper type
+                  }} options={activeTypes.map((t) => ({ value: t.id, label: t.name }))} />
               </div>
               <span className="pb-2 text-sm text-slate">Price per page in ₱. Leave empty if you don&apos;t offer it.</span>
             </div>
@@ -119,7 +156,7 @@ export function Pricing({ data }: { data: PricingData }) {
                 </tr>
               </thead>
               <tbody>
-                {data.sizes.map((s) => (
+                {activeSizes.map((s) => (
                   <tr key={s.id} className="border-t border-border">
                     <th scope="row" className="px-4 py-2.5 text-left font-semibold">
                       {s.label}
@@ -151,8 +188,8 @@ export function Pricing({ data }: { data: PricingData }) {
               <Button size="md" variant="secondary" disabled={!dirty} onClick={() => setDraft({})}>
                 Discard
               </Button>
-              <Button size="md" disabled={!dirty || invalid} onClick={savePrices}>
-                Save prices
+              <Button size="md" disabled={!dirty || invalid || saving} onClick={savePrices}>
+                {saving ? "Saving…" : "Save prices"}
               </Button>
             </div>
           </>
@@ -167,8 +204,15 @@ export function Pricing({ data }: { data: PricingData }) {
               </tr>
             </thead>
             <tbody>
-              {rows[tab].map((r, i) => (
-                <tr key={r.name} className={cn("border-t border-border", r.archived && "text-slate")}>
+              {rows[tab].length === 0 && (
+                <tr className="border-t border-border">
+                  <td colSpan={4} className="px-4 py-6 text-center text-slate">
+                    Nothing here yet.
+                  </td>
+                </tr>
+              )}
+              {rows[tab].map((r) => (
+                <tr key={r.id} className={cn("border-t border-border", r.archived && "text-slate")}>
                   <td className="px-4 py-2.5 font-semibold">{r.name}</td>
                   <td className="px-4 py-2.5">{r.detail}</td>
                   <td className="px-4 py-2.5">
@@ -179,10 +223,10 @@ export function Pricing({ data }: { data: PricingData }) {
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex justify-end gap-2">
-                      <Button size="md" variant="secondary" className="h-8 px-2.5 text-[13px]" onClick={() => setEditing({ kind: tab, index: i })}>
+                      <Button size="md" variant="secondary" className="h-8 px-2.5 text-[13px]" onClick={() => setEditing({ kind: tab, row: r })}>
                         Edit<span className="sr-only"> {r.name}</span>
                       </Button>
-                      <Button size="md" variant="secondary" className="h-8 px-2.5 text-[13px]" onClick={() => toggleArchive(tab, i)}>
+                      <Button size="md" variant="secondary" className="h-8 px-2.5 text-[13px]" disabled={busyId === r.id} onClick={() => toggleArchive(tab, r)}>
                         {r.archived ? <ArchiveRestore size={14} aria-hidden /> : <Archive size={14} aria-hidden />}
                         {r.archived ? "Restore" : "Archive"}
                         <span className="sr-only"> {r.name}</span>
@@ -199,15 +243,9 @@ export function Pricing({ data }: { data: PricingData }) {
       {editing && (
         <OptionModal
           kind={editing.kind}
-          row={editing.index === null ? null : rows[editing.kind][editing.index]}
+          initial={editing.row?.draft ?? null}
           onClose={() => setEditing(null)}
-          onSave={(row) => {
-            const list = rows[editing.kind];
-            const next = editing.index === null ? [...list, row] : list.map((r, i) => (i === editing.index ? row : r));
-            setRows({ ...rows, [editing.kind]: next });
-            toast({ message: `${row.name} saved.` });
-            setEditing(null);
-          }}
+          onSave={(f) => saveRow(editing.kind, editing.row, f)}
         />
       )}
     </>

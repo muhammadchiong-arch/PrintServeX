@@ -1,4 +1,3 @@
-import { ADD_ONS } from "@/lib/add-ons";
 import type { OrderStatus } from "@/lib/status";
 
 // One printed file inside an order
@@ -13,6 +12,7 @@ export type OrderItem = {
   binding: boolean;
   lamination: boolean;
   rate: number; // ₱ per page when the order was placed
+  addOnsTotal: number; // ₱ binding + lamination for this file, when the order was placed
 };
 
 export type StatusEvent = {
@@ -44,11 +44,8 @@ export const PAYMENT_LABELS: Record<PaymentMethod, string> = { cash: "Cash", gca
 export function itemPrinting(i: OrderItem): number {
   return Math.round(i.pages * i.copies * i.rate * 100) / 100;
 }
-export function itemAddOns(i: OrderItem): number {
-  const binding = i.binding ? ADD_ONS.binding.price * i.copies : 0;
-  const lamination = i.lamination ? ADD_ONS.lamination.price * i.pages * i.copies : 0;
-  return binding + lamination;
-}
+// "?? 0": orders kept in the browser from before this field existed
+export const itemAddOns = (i: OrderItem): number => i.addOnsTotal ?? 0;
 export const itemTotal = (i: OrderItem) => itemPrinting(i) + itemAddOns(i);
 
 export const estimatedTotal = (o: Order) => o.items.reduce((sum, i) => sum + itemTotal(i), 0);

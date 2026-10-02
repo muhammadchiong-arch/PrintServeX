@@ -1,10 +1,11 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
-import type { PriceRule } from "@/lib/price";
+import type { AddOn, AddOnKey, AddOns, PriceRule, Prices } from "@/lib/price";
 
 // ⚠ If your Supabase column names are different, change them here only.
 const COLUMNS = {
   sizeName: "name", // paper_sizes
-  sizeDimensions: "dimensions", // paper_sizes (optional column, not in your table yet)
+  sizeDimensions: "dimensions", // paper_sizes (added by supabase/007_pricing_shop.sql)
   typeName: "name", // paper_types
   ruleSizeId: "size_id", // price_rules → paper_sizes.id
   ruleTypeId: "paper_type_id", // price_rules → paper_types.id
@@ -12,13 +13,15 @@ const COLUMNS = {
   rulePrice: "price_per_page", // price_rules: peso amount
 } as const;
 
-export type PaperSize = { id: string; name: string; label: string }; // label e.g. "Short (8.5 × 11 in)"
-export type PaperType = { id: string; name: string };
+export type PaperSize = { id: string; name: string; label: string; dimensions: string; active: boolean }; // label e.g. "Short (8.5 × 11 in)"
+export type PaperType = { id: string; name: string; active: boolean };
+export type AddOnRow = AddOn & { key: AddOnKey; active: boolean };
 
 export type PricingData = {
   sizes: PaperSize[];
   types: PaperType[];
-  rules: PriceRule[];
+  rules: PriceRule[]; // active rules only
+  addOnList: AddOnRow[];
 };
 
 type DbRow = Record<string, unknown>;
@@ -32,22 +35,41 @@ const num = (row: DbRow, col: string): number | null => {
   const v = Number(row[col]);
   return row[col] !== null && row[col] !== undefined && Number.isFinite(v) ? v : null;
 };
+// Rows made before the is_active column count as active
+const active = (row: DbRow) => row.is_active !== false;
+
+// What the order form and price math need: only the active add-ons
+export function toPrices(data: PricingData): Prices {
+  const pick = (key: AddOnKey): AddOn | null => {
+    const a = data.addOnList.find((x) => x.key === key && x.active);
+    return a ? { label: a.label, price: a.price, unit: a.unit } : null;
+  };
+  const addOns: AddOns = { binding: pick("binding"), lamination: pick("lamination") };
+  return { rules: data.rules, addOns };
+}
 
 /**
- * Reads paper sizes, paper types and price rules from Supabase.
+ * Reads paper sizes, paper types, price rules and add-ons.
+ * - Customers (public key): RLS returns active rows only.
+ * - Staff (`all: true`, signed-in client): archived sizes and types too, for S9.
  * Returns null if Supabase can't be reached, so pages can show an error message.
  */
-export async function getPricingData(): Promise<PricingData | null> {
-  // 3 simple reads, joined in code. Sorted by created_at (ids are random uuids), so options
-  // show in the order they were added. RLS only lets the public key see active rows.
-  const [sizes, types, rules] = await Promise.all([
-    supabase.from("paper_sizes").select("*").order("created_at"),
-    supabase.from("paper_types").select("*").order("created_at"),
-    supabase.from("price_rules").select("*"),
+export async function readPricing(client: SupabaseClient, { all = false } = {}): Promise<PricingData | null> {
+  // Sorted by created_at (ids are random uuids), so options show in the order they were added
+  const read = (table: string) => {
+    const q = client.from(table).select("*");
+    return all ? q : q.eq("is_active", true);
+  };
+  const [sizes, types, rules, addOns] = await Promise.all([
+    read("paper_sizes").order("created_at"),
+    read("paper_types").order("created_at"),
+    client.from("price_rules").select("*").eq("is_active", true),
+    read("add_ons"),
   ]);
 
-  if (sizes.error || types.error || rules.error) {
-    console.error("Pricing data failed to load", sizes.error ?? types.error ?? rules.error);
+  const failed = [sizes, types, rules, addOns].find((r) => r.error);
+  if (failed) {
+    console.error("Pricing data failed to load", failed.error);
     return null;
   }
 
@@ -56,13 +78,13 @@ export async function getPricingData(): Promise<PricingData | null> {
       const id = text(s, "id");
       const name = text(s, COLUMNS.sizeName);
       if (!id || !name) return [];
-      const dims = text(s, COLUMNS.sizeDimensions);
-      return [{ id, name, label: dims ? `${name} (${dims})` : name }];
+      const dims = text(s, COLUMNS.sizeDimensions) ?? "";
+      return [{ id, name, label: dims ? `${name} (${dims})` : name, dimensions: dims, active: active(s) }];
     }),
     types: ((types.data ?? []) as DbRow[]).flatMap((t) => {
       const id = text(t, "id");
       const name = text(t, COLUMNS.typeName);
-      return id && name ? [{ id, name }] : [];
+      return id && name ? [{ id, name, active: active(t) }] : [];
     }),
     rules: ((rules.data ?? []) as DbRow[]).flatMap((r) => {
       const sizeId = text(r, COLUMNS.ruleSizeId);
@@ -72,5 +94,17 @@ export async function getPricingData(): Promise<PricingData | null> {
       if (!sizeId || !typeId || (mode !== "bw" && mode !== "color") || pricePerPage === null) return [];
       return [{ sizeId, typeId, color: mode === "color", pricePerPage }];
     }),
+    addOnList: ((addOns.data ?? []) as DbRow[]).flatMap((a): AddOnRow[] => {
+      const key = text(a, "key");
+      const price = num(a, "price");
+      if ((key !== "binding" && key !== "lamination") || price === null) return [];
+      // Binding first, like the order form
+      return [{ key, label: text(a, "label") ?? key, price, unit: text(a, "unit") ?? "", active: active(a) }];
+    }).sort((x, y) => (x.key === "binding" ? -1 : 1) - (y.key === "binding" ? -1 : 1)),
   };
+}
+
+// For customer pages and the walk-in form: active options, read with the public key
+export function getPricingData(): Promise<PricingData | null> {
+  return readPricing(supabase);
 }

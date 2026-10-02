@@ -1,9 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
-import { SHOP } from "@/lib/shop";
+import { getShop } from "@/lib/shop-data";
 
 // Navy footer: shop address, phone and hours, plus the legal links
-export function CustomerFooter() {
+export async function CustomerFooter() {
+  const shop = await getShop();
   return (
     <footer className="bg-navy text-sm text-[#c9d2e3]">
       <div className="mx-auto flex max-w-[1280px] flex-col gap-4 px-4 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-8">
@@ -11,15 +12,15 @@ export function CustomerFooter() {
           <Image src="/app-icon.png" alt="" width={32} height={32} className="hidden size-8 sm:block" />
           <div className="flex flex-col gap-2 sm:flex-row sm:gap-1">
             <span className="font-semibold text-white sm:font-normal sm:text-[#c9d2e3]">
-              {SHOP.name} · {SHOP.area}
+              {shop.name} · {shop.area}
             </span>
             <span>
               <span className="hidden sm:inline"> · </span>
-              {SHOP.address} · {SHOP.phone}
+              {shop.address} · {shop.phone}
             </span>
             <span>
               <span className="hidden sm:inline"> · </span>
-              {SHOP.hours}
+              {shop.hours}
             </span>
           </div>
         </div>

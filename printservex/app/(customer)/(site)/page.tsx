@@ -4,20 +4,21 @@ import { Faq, type FaqItem } from "@/components/customer/home/Faq";
 import { Hero } from "@/components/customer/home/Hero";
 import { HowItWorks } from "@/components/customer/home/HowItWorks";
 import { PriceList, PriceListSkeleton } from "@/components/customer/home/PriceList";
-import { SHOP, UPLOAD_RULES } from "@/lib/shop";
+import { UPLOAD_RULES, type Shop } from "@/lib/shop";
+import { getShop } from "@/lib/shop-data";
 
 // Rebuild the page (and re-read prices from Supabase) at most every 5 minutes.
 // Fast for visitors and uses very few Supabase / Vercel free-tier requests.
 export const revalidate = 300;
 
-const FAQ: FaqItem[] = [
+const faq = (shop: Shop): FaqItem[] => [
   {
     q: "What files can I upload?",
     a: `${UPLOAD_RULES.fileTypes.slice(0, -1).join(", ")} and ${UPLOAD_RULES.fileTypes.at(-1)}, up to ${UPLOAD_RULES.maxFileMb} MB per file and ${UPLOAD_RULES.maxFilesPerOrder} files per order.`,
   },
   {
     q: "When can I pick up?",
-    a: `${SHOP.hoursLong}. Most orders are ready ${SHOP.usualTurnaround}. Check your status page first.`,
+    a: `${shop.hoursLong}. Most orders are ready ${shop.usualTurnaround}. Check your status page first.`,
   },
   {
     q: "Is the price final?",
@@ -27,7 +28,8 @@ const FAQ: FaqItem[] = [
 
 const h2 = "text-xl lg:text-3xl lg:tracking-[-0.015em]";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const shop = await getShop();
   return (
     <>
       <Hero />
@@ -46,7 +48,7 @@ export default function HomePage() {
           <h2 id="faq-title" className={h2}>
             FAQ
           </h2>
-          <Faq items={FAQ} />
+          <Faq items={faq(shop)} />
         </section>
       </Container>
     </>

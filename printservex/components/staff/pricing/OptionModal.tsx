@@ -6,26 +6,46 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 
 export type OptionKind = "sizes" | "papers" | "addons";
-export type OptionRow = { name: string; detail: string; archived: boolean };
 
-const TEXT: Record<OptionKind, { title: string; name: string; detail: string; placeholder: [string, string] }> = {
-  sizes: { title: "paper size", name: "Size name", detail: "Dimensions", placeholder: ["Legal", "8.5 × 14 in"] },
-  papers: { title: "paper type", name: "Paper type", detail: "Available sizes", placeholder: ["Bond 90gsm", "A4, Short"] },
-  addons: { title: "add-on", name: "Add-on name", detail: "Price and unit", placeholder: ["Spiral binding", "₱60.00 per set"] },
+// What the modal edits. Sizes use name + dimensions, paper types only name,
+// add-ons name + price + unit.
+export type OptionDraft = { name: string; dimensions: string; price: string; unit: string };
+
+const TITLE: Record<OptionKind, string> = { sizes: "paper size", papers: "paper type", addons: "add-on" };
+const NAME_LABEL: Record<OptionKind, [string, string]> = {
+  sizes: ["Size name", "Legal"],
+  papers: ["Paper type", "Bond 90gsm"],
+  addons: ["Add-on name", "Spiral binding"],
 };
 
 // Add or edit one row on the Paper sizes / Paper types / Add-ons tabs
-export function OptionModal({ kind, row, onClose, onSave }: { kind: OptionKind; row: OptionRow | null; onClose: () => void; onSave: (row: OptionRow) => void }) {
-  const t = TEXT[kind];
-  const [name, setName] = useState(row?.name ?? "");
-  const [detail, setDetail] = useState(row?.detail ?? "");
+export function OptionModal({
+  kind,
+  initial,
+  onClose,
+  onSave,
+}: {
+  kind: OptionKind;
+  initial: OptionDraft | null; // null = adding a new one
+  onClose: () => void;
+  onSave: (draft: OptionDraft) => Promise<boolean>; // true = saved, close the modal
+}) {
+  const [f, setF] = useState<OptionDraft>(initial ?? { name: "", dimensions: "", price: "", unit: "" });
   const [tried, setTried] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const price = Number(f.price);
+  const errors = {
+    name: f.name.trim() ? undefined : "Enter a name.",
+    price: kind !== "addons" || (f.price.trim() !== "" && Number.isFinite(price) && price >= 0) ? undefined : "Enter ₱0 or more.",
+    unit: kind !== "addons" || f.unit.trim() ? undefined : "e.g. per set",
+  };
 
   return (
     <Modal
       open
       onClose={onClose}
-      title={row ? `Edit ${t.title}` : `Add ${t.title}`}
+      title={initial ? `Edit ${TITLE[kind]}` : `Add ${TITLE[kind]}`}
       footer={
         <>
           <Button size="md" variant="secondary" onClick={onClose}>
@@ -33,18 +53,31 @@ export function OptionModal({ kind, row, onClose, onSave }: { kind: OptionKind; 
           </Button>
           <Button
             size="md"
-            onClick={() => {
+            disabled={saving}
+            onClick={async () => {
               setTried(true);
-              if (name.trim() && detail.trim()) onSave({ name: name.trim(), detail: detail.trim(), archived: row?.archived ?? false });
+              if (Object.values(errors).some(Boolean)) return;
+              setSaving(true);
+              const saved = await onSave({ ...f, name: f.name.trim(), dimensions: f.dimensions.trim(), unit: f.unit.trim() });
+              setSaving(false);
+              if (saved) onClose();
             }}
           >
-            Save
+            {saving ? "Saving…" : "Save"}
           </Button>
         </>
       }
     >
-      <Input size="md" label={t.name} value={name} onChange={(e) => setName(e.target.value)} placeholder={t.placeholder[0]} error={tried && !name.trim() ? "Enter a name." : undefined} />
-      <Input size="md" label={t.detail} value={detail} onChange={(e) => setDetail(e.target.value)} placeholder={t.placeholder[1]} error={tried && !detail.trim() ? "Fill this in." : undefined} />
+      <Input size="md" label={NAME_LABEL[kind][0]} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={NAME_LABEL[kind][1]} error={tried ? errors.name : undefined} />
+      {kind === "sizes" && (
+        <Input size="md" label="Dimensions (optional)" value={f.dimensions} onChange={(e) => setF({ ...f, dimensions: e.target.value })} placeholder="8.5 × 14 in" />
+      )}
+      {kind === "addons" && (
+        <div className="grid grid-cols-2 gap-3">
+          <Input size="md" label="Price (₱)" type="number" inputMode="decimal" min={0} step="0.25" value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} error={tried ? errors.price : undefined} />
+          <Input size="md" label="Unit" value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} placeholder="per set" error={tried ? errors.unit : undefined} />
+        </div>
+      )}
     </Modal>
   );
 }

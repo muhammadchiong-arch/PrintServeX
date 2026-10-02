@@ -12,7 +12,7 @@ import { cn } from "@/lib/cn";
 import { getSavedOrder } from "@/lib/customer-orders";
 import { formatPeso } from "@/lib/format";
 import { amountDue, REF_PATTERN } from "@/lib/orders";
-import { SHOP } from "@/lib/shop";
+import { useShop } from "@/components/ShopProvider";
 import { useIsClient } from "@/lib/use-is-client";
 
 // Small header with only the logo, so the customer focuses on the reference number
@@ -32,6 +32,7 @@ function LogoHeader() {
 }
 
 export function Confirmation() {
+  const shop = useShop();
   const ref = useSearchParams().get("ref") ?? "";
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -114,7 +115,7 @@ export function Confirmation() {
             </span>
           )}
           <span>
-            {SHOP.address}, {SHOP.area} · {SHOP.hours}
+            {shop.address}, {shop.area} · {shop.hours}
           </span>
         </div>
 

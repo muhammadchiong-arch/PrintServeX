@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { CircleAlert } from "lucide-react";
 import { WalkInOrder } from "@/components/staff/WalkInOrder";
-import { getPricingData } from "@/lib/pricing-data";
+import { getPricingData, toPrices } from "@/lib/pricing-data";
 
 export const metadata: Metadata = { title: "Walk-in order · PrintServeX Staff" };
 
@@ -22,7 +22,7 @@ export default async function WalkInPage() {
   }
   return (
     <Suspense>
-      <WalkInOrder sizes={data.sizes} types={data.types} rules={data.rules} />
+      <WalkInOrder sizes={data.sizes} types={data.types} prices={toPrices(data)} />
     </Suspense>
   );
 }

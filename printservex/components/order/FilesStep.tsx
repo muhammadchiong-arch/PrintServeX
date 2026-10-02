@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { CircleAlert, CloudUpload } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { priceFile, type PriceRule, type PrintOptions } from "@/lib/price";
+import { priceFile, type Prices, type PrintOptions } from "@/lib/price";
 import { UPLOAD_RULES } from "@/lib/shop";
 import { FileCard } from "./FileCard";
 import type { Catalog, OrderFile } from "./types";
@@ -12,7 +12,7 @@ type FilesStepProps = {
   files: OrderFile[];
   errors: string[]; // problems with the files the customer just picked
   catalog: Catalog;
-  rules: PriceRule[];
+  prices: Prices;
   onAddFiles: (files: File[]) => void;
   onChangeFile: (id: string, patch: Partial<PrintOptions>) => void;
   onRemoveFile: (id: string) => void;
@@ -21,7 +21,7 @@ type FilesStepProps = {
 const ACCEPT = ".pdf,.docx,.jpg,.jpeg,.png";
 
 // Step 2: drag-and-drop upload, then one card of options per file
-export function FilesStep({ files, errors, catalog, rules, onAddFiles, onChangeFile, onRemoveFile }: FilesStepProps) {
+export function FilesStep({ files, errors, catalog, prices, onAddFiles, onChangeFile, onRemoveFile }: FilesStepProps) {
   const [dragging, setDragging] = useState(false);
 
   return (
@@ -98,7 +98,8 @@ export function FilesStep({ files, errors, catalog, rules, onAddFiles, onChangeF
             key={f.id}
             item={f}
             catalog={catalog}
-            price={priceFile(rules, f.options)}
+            addOns={prices.addOns}
+            price={priceFile(prices, f.options)}
             onChange={(patch) => onChangeFile(f.id, patch)}
             onRemove={() => onRemoveFile(f.id)}
           />

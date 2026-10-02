@@ -6,7 +6,7 @@ import { Stepper } from "@/components/ui/Stepper";
 import { useToast } from "@/components/ui/Toast";
 import { checkFile, readPageCount } from "@/lib/files";
 import { EMPTY_DETAILS, validateDetails, type CustomerDetails, type DetailsErrors } from "@/lib/order-details";
-import { priceOrder, type PriceRule, type PrintOptions } from "@/lib/price";
+import { priceOrder, type Prices, type PrintOptions } from "@/lib/price";
 import { UPLOAD_RULES } from "@/lib/shop";
 import { DetailsStep } from "./DetailsStep";
 import { FilesStep } from "./FilesStep";
@@ -16,7 +16,7 @@ import { ReviewStep } from "./ReviewStep";
 import { STEPS, type Catalog, type OrderFile } from "./types";
 
 type OrderWizardProps = Catalog & {
-  rules: PriceRule[];
+  prices: Prices;
   // "customer" = full-page form at /order · "staff" = Walk-in order inside the staff portal
   variant: "customer" | "staff";
   // Saves the order. Returns an error message to show, or null when it worked.
@@ -29,7 +29,7 @@ const STAFF_STEPS = ["Customer", "Files & options", "Review"];
  * The 3-step new order form, used by customers (C2) and by staff for walk-ins (S5).
  * Steps: 0 = Your details, 1 = Files & options, 2 = Review.
  */
-export function OrderWizard({ sizes, types, rules, variant, onSubmit }: OrderWizardProps) {
+export function OrderWizard({ sizes, types, prices, variant, onSubmit }: OrderWizardProps) {
   const catalog = useMemo(() => ({ sizes, types }), [sizes, types]);
   const isStaff = variant === "staff";
   // Business rule: customers must accept the privacy notice; staff ask walk-in customers in person
@@ -107,7 +107,7 @@ export function OrderWizard({ sizes, types, rules, variant, onSubmit }: OrderWiz
 
   // ---------- Live price ----------
   const readyFiles = files.filter((f) => f.status === "ready");
-  const totals = priceOrder(rules, readyFiles.map((f) => f.options));
+  const totals = priceOrder(prices, readyFiles.map((f) => f.options));
 
   // ---------- Main button for each step ----------
   const continueFromDetails = () => {
@@ -191,13 +191,13 @@ export function OrderWizard({ sizes, types, rules, variant, onSubmit }: OrderWiz
           files={files}
           errors={fileErrors}
           catalog={catalog}
-          rules={rules}
+          prices={prices}
           onAddFiles={addFiles}
           onChangeFile={changeFileOptions}
           onRemoveFile={removeFile}
         />
       )}
-      {step === 2 && <ReviewStep details={details} files={readyFiles} totals={totals} catalog={catalog} rules={rules} onEdit={goTo} />}
+      {step === 2 && <ReviewStep details={details} files={readyFiles} totals={totals} catalog={catalog} prices={prices} onEdit={goTo} />}
     </>
   );
 
@@ -213,7 +213,7 @@ export function OrderWizard({ sizes, types, rules, variant, onSubmit }: OrderWiz
         </div>
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="flex flex-col gap-3">{stepContent}</div>
-          <PriceSummary compact files={files} totals={totals} rules={rules} primary={actions[step]} back={back} />
+          <PriceSummary compact files={files} totals={totals} prices={prices} primary={actions[step]} back={back} />
         </div>
       </>
     );
@@ -235,7 +235,7 @@ export function OrderWizard({ sizes, types, rules, variant, onSubmit }: OrderWiz
           {stepContent}
         </div>
 
-        <PriceSummary files={files} totals={totals} rules={rules} primary={actions[step]} back={back} />
+        <PriceSummary files={files} totals={totals} prices={prices} primary={actions[step]} back={back} />
       </main>
 
       <MobileOrderBar fileCount={readyFiles.length} totals={totals} primary={actions[step]} showTotal={step > 0} />

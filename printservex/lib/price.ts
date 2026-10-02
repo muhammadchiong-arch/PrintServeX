@@ -1,8 +1,6 @@
 // ALL price calculations live in this one file.
-// Today the browser uses it for the live estimate. Later the server will use the
-// same functions to calculate the real price, so a customer can't fake a lower total.
-
-import { ADD_ONS } from "@/lib/add-ons";
+// The browser uses it for the live estimate, and the server uses the same functions
+// (with prices read from the database) for the real price, so nobody can fake a lower total.
 
 // One row of price_rules: ₱ per printed page for a size + paper type + color mode
 export type PriceRule = {
@@ -11,6 +9,14 @@ export type PriceRule = {
   color: boolean;
   pricePerPage: number;
 };
+
+// An add-on from the add_ons table. Only binding and lamination exist (the math below knows them).
+export type AddOn = { label: string; price: number; unit: string };
+export type AddOnKey = "binding" | "lamination";
+export type AddOns = Record<AddOnKey, AddOn | null>; // null = not offered right now
+
+// Everything needed to price an order
+export type Prices = { rules: PriceRule[]; addOns: AddOns };
 
 // The options a customer picks for one file
 export type PrintOptions = {
@@ -45,15 +51,17 @@ const centavos = (n: number) => Math.round(n * 100) / 100;
  * - Printing = pages × copies × price per page.
  * - Binding is per set: each copy is bound separately.
  * - Lamination is per sheet: every printed page (single-sided) is laminated.
- * Returns null if this size + paper + color combination has no price rule.
+ * Returns null if this size + paper + color combination has no price rule,
+ * or a chosen add-on isn't offered anymore.
  */
-export function priceFile(rules: PriceRule[], o: PrintOptions): FilePrice | null {
+export function priceFile({ rules, addOns }: Prices, o: PrintOptions): FilePrice | null {
   const rate = findRate(rules, o);
   if (rate === null) return null;
+  if ((o.binding && !addOns.binding) || (o.lamination && !addOns.lamination)) return null;
 
   const printing = centavos(o.pages * o.copies * rate);
-  const binding = o.binding ? centavos(ADD_ONS.binding.price * o.copies) : 0;
-  const lamination = o.lamination ? centavos(ADD_ONS.lamination.price * o.pages * o.copies) : 0;
+  const binding = o.binding && addOns.binding ? centavos(addOns.binding.price * o.copies) : 0;
+  const lamination = o.lamination && addOns.lamination ? centavos(addOns.lamination.price * o.pages * o.copies) : 0;
   return { rate, printing, binding, lamination, total: centavos(printing + binding + lamination) };
 }
 
@@ -66,12 +74,12 @@ export type OrderPrice = {
 };
 
 // Adds up all files in the order
-export function priceOrder(rules: PriceRule[], files: PrintOptions[]): OrderPrice {
+export function priceOrder(prices: Prices, files: PrintOptions[]): OrderPrice {
   let printing = 0;
   let addOns = 0;
   let hasUnpricedFile = false;
   for (const f of files) {
-    const p = priceFile(rules, f);
+    const p = priceFile(prices, f);
     if (!p) {
       hasUnpricedFile = true;
       continue;

@@ -1,58 +1,69 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Download, Info } from "lucide-react";
+import { useShop } from "@/components/ShopProvider";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
 import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/Toast";
 import { formatDateTime } from "@/lib/format";
-import { SHOP, UPLOAD_RULES } from "@/lib/shop";
-import { PageTitle, tableHead } from "./parts";
+import { saveShop } from "@/lib/admin-actions";
+import { UPLOAD_RULES, type Shop } from "@/lib/shop";
 import type { StaffData } from "@/lib/staff-data";
+import { PageTitle, tableHead } from "./parts";
 import { useStaff } from "./StaffStore";
 
 type Tab = "shop" | "backup" | "audit";
 type BackupFile = { name: string; at: string; size: string; url: string };
 
+// Saved in Supabase (shop_settings). The footer, home page, confirmation and status pages
+// show these; they update as soon as you save.
 function ShopInfo() {
+  const shop = useShop();
+  const router = useRouter();
   const toast = useToast();
-  const [f, setF] = useState({
-    name: SHOP.name,
-    phone: SHOP.phone,
-    address: `${SHOP.address}, ${SHOP.area}`,
-    email: SHOP.email,
-    hours: SHOP.hours,
-    maxMb: String(UPLOAD_RULES.maxFileMb),
-    note: SHOP.pickupNote,
-  });
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
+  const [f, setF] = useState<Shop>(shop);
+  const [saving, setSaving] = useState(false);
+  const set = (k: keyof Shop) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
 
   return (
     <form
       className="grid max-w-[744px] grid-cols-2 gap-x-6 gap-y-4 p-6"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        toast({ message: "Changed on this page only. Saving shop info to the database comes in the next step." });
+        if (saving) return;
+        setSaving(true);
+        const result = await saveShop(f).catch(() => null);
+        setSaving(false);
+        if (!result?.ok) {
+          toast({ kind: "error", message: result?.error ?? "We couldn't reach the server. Check your connection and try again." });
+          return;
+        }
+        toast({ message: "Shop info saved. Customer pages show it now." });
+        router.refresh();
       }}
     >
-      <p className="col-span-2 flex items-center gap-2 rounded-lg border border-dashed border-[#b9c6da] px-3 py-2 text-sm text-slate">
-        <Info size={16} aria-hidden className="shrink-0" />
-        The customer pages read these from lib/shop.ts for now. They will come from here once settings are saved in Supabase.
-      </p>
       <Input size="md" label="Shop name" value={f.name} onChange={set("name")} required />
       <Input size="md" label="Contact number" value={f.phone} onChange={set("phone")} required />
-      <Input size="md" label="Address" value={f.address} onChange={set("address")} required />
+      <Input size="md" label="Street address" value={f.address} onChange={set("address")} placeholder="e.g. 214 Rizal Ave." required />
+      <Input size="md" label="Area / city" value={f.area} onChange={set("area")} placeholder="e.g. Sta. Cruz, Manila" />
       <Input size="md" label="Email" type="email" value={f.email} onChange={set("email")} />
-      <Input size="md" label="Opening hours" value={f.hours} onChange={set("hours")} required />
-      <Input size="md" label="Max file size (MB)" type="number" min={1} max={50} value={f.maxMb} onChange={set("maxMb")} required />
+      <Input size="md" label="Usual turnaround" value={f.usualTurnaround} onChange={set("usualTurnaround")} placeholder="e.g. within 2 hours" />
+      <Input size="md" label="Opening hours (short)" value={f.hours} onChange={set("hours")} placeholder="Mon to Sat, 8:00 AM to 7:00 PM" required />
+      <Input size="md" label="Opening hours (long)" value={f.hoursLong} onChange={set("hoursLong")} placeholder="Monday to Saturday, 8:00 AM to 7:00 PM" />
       <div className="col-span-2">
-        <Textarea label="Pickup note shown to customers" value={f.note} onChange={set("note")} />
+        <Textarea label="Pickup note shown to customers" value={f.pickupNote} onChange={set("pickupNote")} />
       </div>
+      <p className="col-span-2 flex items-center gap-2 text-sm text-slate">
+        <Info size={16} aria-hidden className="shrink-0" />
+        Uploads: {UPLOAD_RULES.fileTypes.join(", ")}, up to {UPLOAD_RULES.maxFileMb} MB per file and {UPLOAD_RULES.maxFilesPerOrder} files per order (set by the storage bucket).
+      </p>
       <div className="col-span-2">
-        <Button type="submit" size="md">
-          Save changes
+        <Button type="submit" size="md" disabled={saving}>
+          {saving ? "Saving…" : "Save changes"}
         </Button>
       </div>
     </form>

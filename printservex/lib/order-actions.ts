@@ -14,12 +14,12 @@ import {
 } from "@/lib/order-input";
 import type { Order, OrderItem } from "@/lib/orders";
 import { priceFile, priceOrder } from "@/lib/price";
-import { getPricingData } from "@/lib/pricing-data";
+import { getPricingData, toPrices } from "@/lib/pricing-data";
 import { getCurrentStaff } from "@/lib/staff-session";
-import { SHOP, UPLOAD_RULES } from "@/lib/shop";
+import { UPLOAD_RULES } from "@/lib/shop";
 import { ORDER_FILES_BUCKET, supabaseAdmin } from "@/lib/supabase-admin";
 
-const TRY_AGAIN = `We couldn't save your order. Please try again, or call us at ${SHOP.phone}.`;
+const TRY_AGAIN = "We couldn't save your order. Please try again, or call the shop.";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // "Thesis Ch.1 (final).pdf" → "Thesis-Ch.1-final-.pdf" (Storage only accepts simple names)
@@ -93,6 +93,7 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
   // Prices straight from the database
   const pricing = await getPricingData();
   if (!pricing) return { ok: false, error: TRY_AGAIN };
+  const prices = toPrices(pricing);
 
   const rows = [];
   const items: OrderItem[] = [];
@@ -106,7 +107,7 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
 
     const size = pricing.sizes.find((s) => s.id === item.sizeId);
     const paper = pricing.types.find((t) => t.id === item.typeId);
-    const price = priceFile(pricing.rules, item);
+    const price = priceFile(prices, item);
     if (!size || !paper || !price) {
       return { ok: false, error: `The options for ${item.fileName} are no longer offered. Please choose others.` };
     }
@@ -139,10 +140,11 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
       binding: item.binding,
       lamination: item.lamination,
       rate: price.rate,
+      addOnsTotal: price.binding + price.lamination,
     });
   }
 
-  const total = priceOrder(pricing.rules, input.items).total;
+  const total = priceOrder(prices, input.items).total;
   const customer = {
     name: input.customer.name.trim(),
     phone: normalizePhone(input.customer.phone),
