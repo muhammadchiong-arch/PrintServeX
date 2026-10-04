@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CircleCheck, CircleX, Clock, Download, FileQuestion, Lock, PackageCheck, Printer, Wallet, X, type LucideIcon } from "lucide-react";
+import { CircleCheck, CircleX, Clock, Download, Eye, FileQuestion, Lock, PackageCheck, Printer, TriangleAlert, Wallet, X, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Modal } from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
+import { extensionOf, isImage } from "@/lib/files";
 import { formatDate, formatDateTime, formatPeso, formatPhone, formatTime } from "@/lib/format";
+import { materialNeeds, type MaterialNeed } from "@/lib/inventory-needs";
 import { amountDue, canCancel, estimatedTotal, isQuote, itemAddOns, itemPrinting, itemTotal, laminationLabel, laminationLine, NEXT_STATUS, PAYMENT_LABELS, quoteCount, type Order, type OrderItem } from "@/lib/orders";
 import { areaSqFt, BACKGROUND_LABELS } from "@/lib/services";
 import { getFileLink } from "@/lib/staff-actions";
@@ -51,6 +54,11 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
   const next = NEXT_STATUS[order.status];
   const closed = order.status === "completed" || order.status === "cancelled";
   const pastOrders = staff.orders.filter((o) => o.customer.phone === order.customer.phone && o.ref !== order.ref).length;
+  // Business rule: printing can only start when the linked paper / lamination film is in stock.
+  // The database checks this again and takes the stock when printing starts (011_inventory_links.sql).
+  const needs = order.status === "pending" ? materialNeeds(order, staff.inventory) : [];
+  const short = needs.filter((n) => n.state === "short");
+  const blocked = next === "processing" && short.length > 0;
 
   const advance = async () => {
     if (next === "completed") return setPayOpen(true);
@@ -87,7 +95,7 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
             </Button>
           )}
           {next && next !== "cancelled" && (
-            <Button size="md" disabled={busy} onClick={advance}>
+            <Button size="md" disabled={busy || blocked} onClick={advance}>
               <PrimaryIcon size={16} aria-hidden />
               {primaryLabel[next as keyof typeof primaryLabel]}
             </Button>
@@ -100,6 +108,17 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
           )}
         </div>
       </div>
+
+      {blocked && (
+        <p role="alert" className="flex items-start gap-2 rounded-lg bg-cancelled-tint p-3 text-sm text-cancelled">
+          <TriangleAlert size={20} aria-hidden className="shrink-0" />
+          <span>
+            <span className="font-semibold">Out of stock.</span>{" "}
+            {short.map((n) => `${n.label} needs ${n.need} ${n.item?.unit ?? ""}, has ${n.item?.qty ?? 0}`).join("; ")}. This order can&apos;t start
+            until it is restocked (Inventory → Stock in), or cancel the order.
+          </span>
+        </p>
+      )}
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
         <div className="flex flex-col gap-4">
@@ -120,6 +139,8 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
               </Link>
             </span>
           </section>
+
+          {needs.length > 0 && <MaterialsCard needs={needs} />}
 
           <PriceCard order={order} locked={closed} />
 
@@ -176,6 +197,46 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
         }}
       />
     </>
+  );
+}
+
+// What this order takes from inventory when printing starts (Pending orders only)
+function MaterialsCard({ needs }: { needs: MaterialNeed[] }) {
+  return (
+    <section className={cn(card, "gap-2")}>
+      <CardLabel>Materials</CardLabel>
+      {needs.map((n) => (
+        <div key={n.label} className="flex items-start justify-between gap-3">
+          <span className="min-w-0">
+            {n.item ? (
+              <Link href={`/staff/inventory/${n.item.id}`} className="text-blue hover:underline">
+                {n.label}
+              </Link>
+            ) : (
+              n.label
+            )}
+            <span className="block text-xs text-slate">
+              Needs {n.need} {n.item?.unit ?? ""}
+              {n.item ? ` · ${n.item.qty} on hand` : ""}
+            </span>
+          </span>
+          {n.state === "ok" && (
+            <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-completed">
+              <CircleCheck size={14} aria-hidden />
+              In stock
+            </span>
+          )}
+          {n.state === "short" && (
+            <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-cancelled">
+              <CircleX size={14} aria-hidden />
+              {n.item && n.item.qty <= 0 ? "Out of stock" : "Not enough"}
+            </span>
+          )}
+          {n.state === "untracked" && <span className="shrink-0 text-xs text-slate">Not tracked in inventory</span>}
+        </div>
+      ))}
+      <p className="text-xs text-slate">Taken from stock when printing starts.</p>
+    </section>
   );
 }
 
@@ -289,7 +350,7 @@ function PriceCard({ order, locked }: { order: Order; locked: boolean }) {
         </form>
       )}
 
-      {order.payment && (
+      {order.payment ? (
         <div className="flex items-center justify-between border-t border-border pt-2">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-completed-tint py-0.5 pl-2 pr-2.5 text-xs font-semibold text-completed">
             <CircleCheck size={12} aria-hidden />
@@ -297,8 +358,20 @@ function PriceCard({ order, locked }: { order: Order; locked: boolean }) {
           </span>
           <span className="tabular">
             {PAYMENT_LABELS[order.payment.method]} · {formatPeso(order.payment.amount)}
+            {order.payment.by && <span className="text-slate"> · by {order.payment.by}</span>}
           </span>
         </div>
+      ) : (
+        order.status !== "cancelled" && (
+          // Business rule: customers pay at the counter when they pick up (cash or GCash)
+          <div className="flex items-center justify-between border-t border-border pt-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-pending-tint py-0.5 pl-2 pr-2.5 text-xs font-semibold text-pending">
+              <Clock size={12} aria-hidden />
+              Unpaid
+            </span>
+            <span className="text-xs text-slate">Paid at pickup</span>
+          </div>
+        )
       )}
     </section>
   );
@@ -339,7 +412,7 @@ function DownloadButton({ orderRef, position, fileName }: { orderRef: string; po
       onClick={async () => {
         setLoading(true);
         try {
-          const link = await getFileLink(orderRef, position);
+          const link = await getFileLink(orderRef, position, "download");
           if (link.ok) window.location.assign(link.url);
           else toast({ kind: "error", message: link.error });
         } catch {
@@ -352,6 +425,82 @@ function DownloadButton({ orderRef, position, fileName }: { orderRef: string; po
       {loading ? "Opening…" : "Download"}
       <span className="sr-only"> {fileName}</span>
     </Button>
+  );
+}
+
+// Which customer files the browser can show: PDF (its own viewer) and JPG/PNG. DOCX can't be shown.
+type FileKind = "pdf" | "image" | "other";
+const fileKindOf = (name: string): FileKind => (extensionOf(name) === "pdf" ? "pdf" : isImage(name) ? "image" : "other");
+const fileTypeLabel = (name: string) => (extensionOf(name) === "jpeg" ? "JPG" : extensionOf(name).toUpperCase());
+
+// The file box of one item: a thumbnail for photos, a PDF tile, or "no preview" for DOCX.
+// "View file" opens it inside the site with a link that works for 5 minutes (staff only).
+function FilePreview({ orderRef, position, fileName }: { orderRef: string; position: number; fileName: string }) {
+  const toast = useToast();
+  const kind = fileKindOf(fileName);
+  const [thumb, setThumb] = useState<string | null>(null);
+  const [viewUrl, setViewUrl] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
+
+  // Photos: load a small preview right away
+  useEffect(() => {
+    if (kind !== "image") return;
+    let current = true;
+    getFileLink(orderRef, position, "view")
+      .then((link) => current && link.ok && setThumb(link.url))
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [kind, orderRef, position]);
+
+  const openViewer = async () => {
+    setOpening(true);
+    try {
+      const link = await getFileLink(orderRef, position, "view"); // a fresh link each time
+      if (link.ok) setViewUrl(link.url);
+      else toast({ kind: "error", message: link.error });
+    } catch {
+      toast({ kind: "error", message: "We couldn't reach the server. Try again." });
+    }
+    setOpening(false);
+  };
+
+  const box = "flex h-[196px] flex-col items-center justify-center gap-2 rounded-lg border border-border p-2 text-center text-slate";
+  return (
+    <>
+      {kind === "other" ? (
+        <div className={cn(box, "bg-bg")}>
+          <FileQuestion size={28} aria-hidden />
+          <span className="font-mono text-[11px] font-semibold">{fileTypeLabel(fileName)}</span>
+          <span className="text-xs">No preview for this file type. Download it to open.</span>
+        </div>
+      ) : (
+        <button type="button" onClick={openViewer} disabled={opening} className={cn(box, "bg-bg transition-colors duration-150 hover:border-blue hover:text-blue")}>
+          {kind === "image" && thumb ? (
+            // eslint-disable-next-line @next/next/no-img-element -- a short-lived private link, not a site image
+            <img src={thumb} alt={`Preview of ${fileName}`} className="max-h-[150px] max-w-full rounded object-contain" />
+          ) : (
+            <span className="font-mono text-[11px] font-semibold">{fileTypeLabel(fileName)}</span>
+          )}
+          <span className="flex items-center gap-1 text-xs font-semibold">
+            <Eye size={14} aria-hidden />
+            {opening ? "Opening…" : "View file"}
+          </span>
+        </button>
+      )}
+
+      <Modal wide open={viewUrl !== null} onClose={() => setViewUrl(null)} title={fileName} description="The link works for 5 minutes. Close and open it again if it stops loading.">
+        {viewUrl &&
+          (kind === "pdf" ? (
+            // The browser's own PDF viewer: pages, zoom and scrolling
+            <iframe src={viewUrl} title={fileName} className="h-[70vh] w-full rounded-lg border border-border" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element -- a short-lived private link, not a site image
+            <img src={viewUrl} alt={fileName} className="mx-auto max-h-[70vh] max-w-full object-contain" />
+          ))}
+      </Modal>
+    </>
   );
 }
 
@@ -398,12 +547,7 @@ function ItemCard({ item: i, orderRef, position }: { item: OrderItem; orderRef: 
 
   return (
     <article className={cn("gap-5 rounded-xl bg-surface p-4 shadow-card", i.fileName ? "grid grid-cols-[150px_minmax(0,1fr)]" : "flex flex-col")}>
-      {/* No page previews yet: open the file with Download */}
-      {i.fileName && (
-        <div className="flex h-[196px] items-center justify-center rounded-lg border border-border bg-[repeating-linear-gradient(135deg,#f6f8fb_0_8px,#ecf0f5_8px_16px)] p-2 text-center font-mono text-[11px] text-slate">
-          page 1 preview
-        </div>
-      )}
+      {i.fileName && <FilePreview orderRef={orderRef} position={position} fileName={i.fileName} />}
       <div className="flex flex-col gap-3">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
@@ -413,7 +557,7 @@ function ItemCard({ item: i, orderRef, position }: { item: OrderItem; orderRef: 
             <h2 className="truncate font-sans text-[15px] font-semibold">{i.fileName ?? i.serviceName}</h2>
             <p className="text-[13px] text-slate">
               {i.fileName
-                ? [i.kind === "document" && `${i.pages} ${i.pages === 1 ? "page" : "pages"}`, i.fileSize].filter(Boolean).join(" · ")
+                ? [fileTypeLabel(i.fileName), i.kind === "document" && `${i.pages} ${i.pages === 1 ? "page" : "pages"}`, i.fileSize].filter(Boolean).join(" · ")
                 : "No file attached"}
             </p>
           </div>

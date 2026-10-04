@@ -8,7 +8,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { FAILED, fromDb, NOT_ADMIN, SIGNED_OUT, staffRpc as rpc, type ActionResult, type Fail } from "@/lib/action-results";
 import type { PaymentMethod } from "@/lib/orders";
-import type { Role } from "@/lib/staff-types";
+import { isLaminationSize } from "@/lib/price";
+import type { InventoryLink, Role } from "@/lib/staff-types";
 import { getCurrentStaff } from "@/lib/staff-session";
 import { SUPABASE_KEY, SUPABASE_URL } from "@/lib/supabase";
 import { ORDER_FILES_BUCKET, supabaseAdmin } from "@/lib/supabase-admin";
@@ -46,10 +47,11 @@ export async function setRemarks(ref: string, remarks: string): Promise<ActionRe
   return rpc("staff_set_remarks", { p_ref: ref, p_remarks: remarks });
 }
 
-// A download link for one uploaded file, valid for 5 minutes.
-// Made AS the staff member, so the storage rule "staff read order files" must allow it.
-export async function getFileLink(ref: string, position: number): Promise<{ ok: true; url: string } | Fail> {
-  if (!isRef(ref) || !Number.isInteger(position)) return FAILED;
+// A link to one uploaded file, valid for 5 minutes. "view" opens it in the browser (PDF, JPG, PNG),
+// "download" saves it with its original name. Made AS the staff member, so the storage rule
+// "staff read order files" must allow it. The file path comes from the order, never from the browser.
+export async function getFileLink(ref: string, position: number, mode: "view" | "download" = "download"): Promise<{ ok: true; url: string } | Fail> {
+  if (!isRef(ref) || !Number.isInteger(position) || position < 1 || (mode !== "view" && mode !== "download")) return FAILED;
   if (!(await getCurrentStaff())) return SIGNED_OUT;
   const supabase = await createStaffClient();
   const { data: item } = await supabase
@@ -58,13 +60,13 @@ export async function getFileLink(ref: string, position: number): Promise<{ ok: 
     .eq("orders.ref", ref)
     .eq("position", position)
     .maybeSingle();
-  // Business rule (privacy notice): files are deleted 30 days after the order is closed
+  // Business rule (privacy notice): files of closed orders are deleted 30 days after the order was placed (lib/file-cleanup.ts)
   if (item && !item.storage_path) return { ok: false, error: "This file was deleted. Files are kept for 30 days." };
   if (!item?.storage_path) return { ok: false, error: "This file isn't in storage." };
 
   const { data, error } = await supabase.storage
     .from(ORDER_FILES_BUCKET)
-    .createSignedUrl(item.storage_path, 300, { download: item.file_name });
+    .createSignedUrl(item.storage_path, 300, mode === "download" ? { download: item.file_name } : undefined);
   if (error || !data) {
     console.error("getFileLink:", error?.message);
     return { ok: false, error: "The file couldn't be opened. Try again." };
@@ -76,20 +78,56 @@ export async function getFileLink(ref: string, position: number): Promise<{ ok: 
 
 export async function moveStock(itemId: string, type: "in" | "out", qty: number, note: string): Promise<ActionResult> {
   if (!/^\d+$/.test(itemId) || (type !== "in" && type !== "out") || !Number.isInteger(qty) || typeof note !== "string") return FAILED;
-  return rpc("staff_move_stock", { p_item_id: Number(itemId), p_type: type, p_qty: qty, p_note: note });
+  return rpc("staff_move_stock", { p_item_id: Number(itemId), p_type: type, p_qty: qty, p_note: note.slice(0, 300) });
 }
 
-export async function addItem(item: { name: string; unit: string; qty: number; reorderLevel: number }): Promise<ActionResult> {
-  if (typeof item?.name !== "string" || typeof item.unit !== "string" || !Number.isInteger(item.qty) || !Number.isInteger(item.reorderLevel)) return FAILED;
-  const result = await rpc("staff_add_item", {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// The link as database parameters, or null if it isn't valid
+function linkParams(link: unknown): { p_paper_size_id: string | null; p_paper_type_id: string | null; p_lamination_size: string | null } | null {
+  if (link === null) return { p_paper_size_id: null, p_paper_type_id: null, p_lamination_size: null };
+  const l = link as InventoryLink;
+  if (l?.kind === "paper" && UUID.test(String(l.sizeId)) && UUID.test(String(l.typeId)))
+    return { p_paper_size_id: l.sizeId, p_paper_type_id: l.typeId, p_lamination_size: null };
+  if (l?.kind === "lamination" && isLaminationSize(l.size)) return { p_paper_size_id: null, p_paper_type_id: null, p_lamination_size: l.size };
+  return null;
+}
+
+type ItemInput = { name: string; unit: string; reorderLevel: number; link: InventoryLink | null };
+const validItem = (i: ItemInput) =>
+  typeof i?.name === "string" && typeof i.unit === "string" && Number.isInteger(i.reorderLevel) && linkParams(i.link) !== null;
+
+export async function addItem(item: ItemInput & { qty: number }): Promise<ActionResult> {
+  if (!validItem(item) || !Number.isInteger(item.qty)) return FAILED;
+  return rpc("staff_add_item", {
     p_name: item.name.slice(0, 100),
     p_unit: item.unit.slice(0, 30),
     p_qty: item.qty,
     p_reorder: item.reorderLevel,
+    // Only sent when there is a link, so adding a plain item still works before 011 is run
+    ...(item.link ? linkParams(item.link) : {}),
   });
-  // The item name must be unique (001_tables.sql)
-  if (!result.ok && result.error === FAILED.error) return { ok: false, error: `There is already an item called ${item.name}, or it couldn't be saved.` };
-  return result;
+}
+
+// Name, unit, reorder level and what it is used for. The quantity only changes with Stock in / out.
+export async function updateItem(itemId: string, item: ItemInput): Promise<ActionResult> {
+  if (!/^\d+$/.test(itemId) || !validItem(item)) return FAILED;
+  return rpc("staff_update_item", {
+    p_id: Number(itemId),
+    p_name: item.name.slice(0, 100),
+    p_unit: item.unit.slice(0, 30),
+    p_reorder: item.reorderLevel,
+    ...linkParams(item.link),
+  });
+}
+
+// Admin only (checked here and by admin_delete_item in the database)
+export async function deleteItem(itemId: string): Promise<ActionResult> {
+  if (!/^\d+$/.test(itemId)) return FAILED;
+  const me = await getCurrentStaff();
+  if (!me) return SIGNED_OUT;
+  if (me.role !== "Admin") return NOT_ADMIN;
+  return rpc("admin_delete_item", { p_id: Number(itemId) });
 }
 
 // ---------- Audit log ----------
@@ -98,6 +136,7 @@ export async function addItem(item: { name: string; unit: string; qty: number; r
 export async function logBackup(details: string): Promise<ActionResult> {
   const me = await getCurrentStaff();
   if (!me) return SIGNED_OUT;
+  if (me.role !== "Admin") return NOT_ADMIN; // backups are on the admin Settings page
   const supabase = await createStaffClient();
   const { error } = await supabase
     .from("audit_log")

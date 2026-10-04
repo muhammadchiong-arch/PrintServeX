@@ -9,12 +9,18 @@ export type InventoryMove = {
   by: string;
 };
 
+// What an inventory item is used for, so starting a print can take it from stock (011_inventory_links.sql)
+export type InventoryLink =
+  | { kind: "paper"; sizeId: string; typeId: string } // a paper size + paper type
+  | { kind: "lamination"; size: "id" | "short" | "a4" | "legal" }; // a lamination film size
+
 export type InventoryItem = {
   id: string;
   name: string;
   unit: string; // e.g. "ream"
   qty: number;
-  reorderLevel: number; // Business rule: at or below this number, the item is "Low stock"
+  reorderLevel: number; // Business rule: at or below this number, the item is "Low stock"; 0 = "Out of stock"
+  link: InventoryLink | null; // null = not linked (only counted by hand)
   moves: InventoryMove[]; // newest first
 };
 

@@ -150,6 +150,13 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
     }
     const paperName = doc ? pricing.types.find((t) => t.id === options.typeId)?.name : undefined;
     if (doc && (!sizeName || !paperName)) return { ok: false, error: TRY_AGAIN };
+    // Document: keep the paper size and type ids, so starting the print can check and take that
+    // paper from inventory (supabase/011_inventory_links.sql). Names can change; ids don't.
+    delete details.typeId;
+    if (doc) {
+      details.sizeId = options.sizeId;
+      details.typeId = options.typeId;
+    }
     const quantity = service.kind === "document" ? options.copies : (details.quantity ?? 1);
 
     rows.push({

@@ -46,6 +46,7 @@ export type LineDetails = {
   // Lamination size: chosen by the customer (photo), or set by the server from the print options (document)
   laminationSize?: "id" | "short" | "a4" | "legal";
   laminationRate?: number; // ₱ per sheet / piece at order time, always set by the server
+  typeId?: string; // document: the paper type id, set by the server (sizeId holds the paper size id)
 };
 
 export const LIMITS = {

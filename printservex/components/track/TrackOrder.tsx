@@ -33,7 +33,8 @@ export function TrackOrder({ result, initialRef, initialCode }: TrackOrderProps)
 
   if (result?.ok) return <OrderStatusView order={result.order} />;
 
-  const notFound = result?.ok === false && result.error !== "unavailable";
+  const notFound = result?.ok === false && result.error !== "unavailable" && result.error !== "too_many";
+  const tooMany = result?.ok === false && result.error === "too_many";
   const unavailable = result?.ok === false && result.error === "unavailable";
 
   const submit = (e: React.FormEvent) => {
@@ -61,6 +62,14 @@ export function TrackOrder({ result, initialRef, initialCode }: TrackOrderProps)
           <SearchX size={20} aria-hidden className="shrink-0" />
           <span>
             <b>No matching order.</b> Check both entries and try again, or call the shop at {shop.phone}.
+          </span>
+        </p>
+      )}
+      {tooMany && (
+        <p role="alert" className="flex gap-2 rounded-lg bg-cancelled-tint p-3 text-sm text-cancelled">
+          <SearchX size={20} aria-hidden className="shrink-0" />
+          <span>
+            <b>Too many tries for this reference number.</b> Please wait an hour and try again, or call the shop at {shop.phone}.
           </span>
         </p>
       )}

@@ -1,17 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowDownToLine, ArrowUpFromLine, FileQuestion, Pencil, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Modal } from "@/components/ui/Modal";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/format";
-import type { InventoryMove } from "@/lib/staff-types";
+import { LAMINATION_LABELS } from "@/lib/price";
+import type { InventoryItem, InventoryMove } from "@/lib/staff-types";
 import { BackLink, tableHead } from "../parts";
 import { useStaff } from "../StaffStore";
-import { isLow } from "./Inventory";
-import { StockModal, type StockAction } from "./InventoryModals";
+import { isLow, isOut } from "./Inventory";
+import { ItemModal, StockModal, type StockAction } from "./InventoryModals";
 
 const MOVE_STYLE: Record<InventoryMove["type"], { label: string; icon: LucideIcon; color: string }> = {
   in: { label: "Stock in", icon: ArrowDownToLine, color: "text-completed" },
@@ -19,10 +22,23 @@ const MOVE_STYLE: Record<InventoryMove["type"], { label: string; icon: LucideIco
   adjust: { label: "Adjustment", icon: Pencil, color: "text-pending" },
 };
 
+// What a linked item is used for, e.g. "Paper A4 · Bond 80gsm"
+function usedForText(item: InventoryItem, paper: { sizes: { id: string; name: string }[]; types: { id: string; name: string }[] }): string {
+  const l = item.link;
+  if (!l) return "Not linked: counted by hand only";
+  if (l.kind === "lamination") return `Lamination film ${LAMINATION_LABELS[l.size]}`;
+  const size = paper.sizes.find((s) => s.id === l.sizeId)?.name ?? "archived size";
+  const type = paper.types.find((t) => t.id === l.typeId)?.name ?? "archived paper";
+  return `Paper ${size} · ${type}`;
+}
+
 // S8: one item's numbers and its full movement log
 export function ItemDetail({ itemId }: { itemId: string }) {
-  const { inventory } = useStaff();
+  const { inventory, paper, isAdmin, deleteItem } = useStaff();
+  const router = useRouter();
   const [stock, setStock] = useState<StockAction>(null);
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const item = inventory.find((i) => i.id === itemId);
 
   if (!item) {
@@ -45,8 +61,16 @@ export function ItemDetail({ itemId }: { itemId: string }) {
       <BackLink href="/staff/inventory">Inventory</BackLink>
       <div className="flex items-center gap-3">
         <h1 className="text-2xl">{item.name}</h1>
-        {isLow(item) && <StatusBadge status="low_stock" size="sm" />}
+        {isOut(item) ? <StatusBadge status="out_of_stock" size="sm" /> : isLow(item) && <StatusBadge status="low_stock" size="sm" />}
         <div className="ml-auto flex gap-2">
+          {isAdmin && (
+            <Button size="md" variant="ghost" onClick={() => setDeleting(true)}>
+              Delete
+            </Button>
+          )}
+          <Button size="md" variant="secondary" onClick={() => setEditing(true)}>
+            Edit
+          </Button>
           <Button size="md" variant="secondary" onClick={() => setStock({ item, type: "out" })}>
             Stock out
           </Button>
@@ -55,6 +79,8 @@ export function ItemDetail({ itemId }: { itemId: string }) {
           </Button>
         </div>
       </div>
+
+      <p className="-mt-2 text-sm text-slate">Used for: {usedForText(item, paper)}</p>
 
       <div className="grid grid-cols-3 gap-4">
         {[
@@ -110,6 +136,31 @@ export function ItemDetail({ itemId }: { itemId: string }) {
       </section>
 
       <StockModal action={stock} onClose={() => setStock(null)} />
+      <ItemModal key={`${item.id}-${editing}`} open={editing} item={item} onClose={() => setEditing(false)} />
+      {/* Admin only: removes the item and its movement log (e.g. demo items) */}
+      <Modal
+        open={deleting}
+        onClose={() => setDeleting(false)}
+        title={`Delete ${item.name}?`}
+        description="The item and its movement log are removed. Orders aren't changed. This can't be undone."
+        footer={
+          <>
+            <Button size="md" variant="secondary" onClick={() => setDeleting(false)}>
+              Keep item
+            </Button>
+            <Button
+              size="md"
+              variant="danger"
+              onClick={async () => {
+                setDeleting(false);
+                if (await deleteItem(item.id)) router.push("/staff/inventory");
+              }}
+            >
+              Delete item
+            </Button>
+          </>
+        }
+      />
     </>
   );
 }
