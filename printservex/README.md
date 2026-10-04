@@ -10,7 +10,7 @@
 
 - **Customers** (no account needed) choose a service, upload their files, see the price right away, and get a
   reference number. They track the order with the reference number and the last 4 digits of their phone.
-  They pay at the counter when they pick up (cash or GCash).
+  They pay when they pick up: cash, or online payment (GCash, Maya or bank transfer) checked by staff at the counter.
 - **Staff** see the orders, open the customer's file, start printing, mark it ready and record the payment.
   They also take walk-in orders and keep the inventory (paper, lamination film, supplies) up to date.
 - **The admin (shop owner)** also sets prices, adds staff accounts, sees reports and changes shop info.
@@ -178,7 +178,8 @@ Vercel → Settings → Environment Variables; without it the cleanup never runs
 ## 12. Known limitations
 
 - DOCX files can't be previewed in the browser; staff download them.
-- Payment is recorded at the counter (cash or GCash). There is no online payment.
+- Payment is recorded by staff at the counter: cash, or online payment (GCash, Maya, bank transfer) that staff check
+  on the customer's phone. Customers can't pay inside the website, and online payments aren't confirmed automatically.
 - Only Document paper and lamination film are taken from stock automatically. Other supplies (ink, toner, photo
   and sticker paper for other services) are counted by hand with Stock in / Stock out.
 - Lamination is charged per printed page, but film is used per sheet (double-sided pages share one sheet).

@@ -70,7 +70,8 @@ Stock states: **OK** · **Low stock** (at or below the reorder level) · **Out o
 4. Check the **Materials** card: everything should say **In stock**
 5. **Start processing**: this takes the paper and lamination film from inventory
 6. Print the job, then **Mark ready for pickup** (the customer sees it on their tracking page)
-7. When the customer pays at the counter: **Record payment & complete** (cash or GCash)
+7. When the customer pays at the counter: **Record payment & complete** (Cash, or Online payment: check the
+   GCash / Maya / bank transfer confirmation on their phone first)
 
 If the files show a different number of pages or something must change, set the **Final price** with a note
 before completing. The customer sees the final price on their tracking page.
@@ -115,6 +116,7 @@ After each step, explain back what happened and why. If you can't explain it yet
 ## Known limitations
 
 - DOCX files can't be previewed in the browser (download them).
-- No online payment: customers pay cash or GCash at the counter.
+- Customers can't pay inside the website. Online payments (GCash, Maya, bank transfer) are checked by staff at the
+  counter and recorded as "Online payment".
 - Only document paper and lamination film are taken from stock automatically; other supplies are counted by hand.
 - The demo inventory has sample numbers, not the shop's real stock.

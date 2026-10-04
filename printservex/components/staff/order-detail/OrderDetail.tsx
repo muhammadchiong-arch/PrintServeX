@@ -363,7 +363,7 @@ function PriceCard({ order, locked }: { order: Order; locked: boolean }) {
         </div>
       ) : (
         order.status !== "cancelled" && (
-          // Business rule: customers pay at the counter when they pick up (cash or GCash)
+          // Business rule: customers pay at the counter when they pick up (cash or online payment)
           <div className="flex items-center justify-between border-t border-border pt-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-pending-tint py-0.5 pl-2 pr-2.5 text-xs font-semibold text-pending">
               <Clock size={12} aria-hidden />

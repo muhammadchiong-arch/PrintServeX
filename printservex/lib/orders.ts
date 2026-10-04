@@ -48,7 +48,9 @@ export type Order = {
   payment?: { method: PaymentMethod; amount: number; at: string; by: string };
 };
 
-export const PAYMENT_LABELS: Record<PaymentMethod, string> = { cash: "Cash", gcash: "GCash" };
+// "gcash" is the value saved in the database (supabase/006, 008). People see "Online payment":
+// GCash, Maya or a bank transfer, checked by staff at the counter.
+export const PAYMENT_LABELS: Record<PaymentMethod, string> = { cash: "Cash", gcash: "Online payment" };
 
 // Prices are stored per item when the order is placed, so later price changes don't affect it
 export function itemPrinting(i: OrderItem): number {

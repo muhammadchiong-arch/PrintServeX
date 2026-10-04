@@ -52,7 +52,7 @@ export function Dashboard() {
     {
       label: "Today's sales",
       value: formatPeso(sumBy("cash") + sumBy("gcash")),
-      note: `${formatPeso(sumBy("cash"))} cash · ${formatPeso(sumBy("gcash"))} GCash`,
+      note: `${formatPeso(sumBy("cash"))} cash · ${formatPeso(sumBy("gcash"))} online`,
       icon: Wallet,
       color: "text-navy",
     },

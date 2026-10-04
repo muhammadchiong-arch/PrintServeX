@@ -7,7 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Textarea } from "@/components/ui/Textarea";
 import { formatPeso } from "@/lib/format";
-import type { PaymentMethod } from "@/lib/orders";
+import { PAYMENT_LABELS, type PaymentMethod } from "@/lib/orders";
 
 // Business rule: cancelling always needs a reason; the customer sees it on their status page
 export function CancelModal({ open, orderRef, onClose, onConfirm }: { open: boolean; orderRef: string; onClose: () => void; onConfirm: (reason: string) => void }) {
@@ -110,7 +110,7 @@ export function PaymentModal({
         onChange={setMethod}
         options={[
           { value: "cash", label: "Cash" },
-          { value: "gcash", label: "GCash" },
+          { value: "gcash", label: PAYMENT_LABELS.gcash },
         ]}
       />
       {method === "cash" && (
@@ -136,7 +136,9 @@ export function PaymentModal({
           )}
         </div>
       )}
-      {method === "gcash" && <p className="text-sm text-slate">Check the GCash receipt on the customer&apos;s phone before confirming.</p>}
+      {method === "gcash" && (
+        <p className="text-sm text-slate">Check the payment confirmation (GCash, Maya or bank transfer) on the customer&apos;s phone before confirming.</p>
+      )}
     </Modal>
   );
 }
