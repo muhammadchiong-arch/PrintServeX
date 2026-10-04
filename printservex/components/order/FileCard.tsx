@@ -9,7 +9,7 @@ import { Select } from "@/components/ui/Select";
 import { ToggleChip } from "@/components/ui/ToggleChip";
 import { formatFileSize, isImage } from "@/lib/files";
 import { formatPeso } from "@/lib/format";
-import type { AddOns, FilePrice, PrintOptions } from "@/lib/price";
+import { isLaminationSize, LAMINATION_PRICE_RANGE, LAMINATION_SIZES, type AddOns, type FilePrice, type PrintOptions } from "@/lib/price";
 import type { LineDetails } from "@/lib/services";
 import type { Catalog, OrderLine } from "./types";
 
@@ -21,17 +21,24 @@ type FileCardProps = {
   onChange: (patch: Partial<PrintOptions>) => void;
   onDetails: (patch: Partial<LineDetails>) => void;
   onRemove: () => void;
+  showProblem: boolean; // true after the customer tried to continue
 };
 
 const MAX_PAGES = 2000;
 
+const LAMINATION_OPTIONS = [
+  { value: "", label: "Choose a size" },
+  ...LAMINATION_SIZES.map((s) => ({ value: s.id, label: `${s.label} · ${formatPeso(s.pricePerSheet)}/sheet` })),
+];
+
 // One uploaded document with all its print options
-export function FileCard({ item, price, addOns, catalog, onChange, onDetails, onRemove }: FileCardProps) {
+export function FileCard({ item, price, addOns, catalog, onChange, onDetails, onRemove, showProblem }: FileCardProps) {
   const o = item.options;
   const Icon = isImage(item.file.name) ? ImageIcon : FileText;
   // The Pages box keeps its own text so the customer can clear it and type a new number
   const [pagesInput, setPagesInput] = useState(String(o.pages));
   const pagesValid = /^\d+$/.test(pagesInput) && Number(pagesInput) >= 1 && Number(pagesInput) <= MAX_PAGES;
+  const needsLaminationSize = o.lamination && Boolean(addOns.lamination) && !o.laminationSize;
   const pagesText = item.pagesDetected ? `${item.pagesDetected} ${item.pagesDetected === 1 ? "page" : "pages"}` : "Pages not counted";
 
   return (
@@ -122,10 +129,22 @@ export function FileCard({ item, price, addOns, catalog, onChange, onDetails, on
             </ToggleChip>
           )}
           {addOns.lamination && (
-            <ToggleChip pressed={o.lamination} onToggle={() => onChange({ lamination: !o.lamination })}>
-              {addOns.lamination.label} +{formatPeso(addOns.lamination.price)}/sheet
+            // Turning lamination off also clears its size
+            <ToggleChip pressed={o.lamination} onToggle={() => onChange({ lamination: !o.lamination, laminationSize: null })}>
+              {addOns.lamination.label} +{formatPeso(LAMINATION_PRICE_RANGE.min)}–{formatPeso(LAMINATION_PRICE_RANGE.max)}/sheet
             </ToggleChip>
           )}
+        </div>
+      )}
+      {o.lamination && addOns.lamination && (
+        <div className="w-[220px] max-w-full">
+          <Select
+            label="Lamination size"
+            value={o.laminationSize ?? ""}
+            onChange={(e) => onChange({ laminationSize: isLaminationSize(e.target.value) ? e.target.value : null })}
+            options={LAMINATION_OPTIONS}
+            error={showProblem && needsLaminationSize ? "Choose a lamination size." : undefined}
+          />
         </div>
       )}
       </div>
@@ -135,13 +154,13 @@ export function FileCard({ item, price, addOns, catalog, onChange, onDetails, on
         <p role="alert" className="flex items-center gap-2 rounded-lg bg-cancelled-tint p-3 text-sm text-cancelled">
           <CircleAlert size={20} aria-hidden className="shrink-0" />
           An add-on you picked is no longer offered.
-          <button type="button" className="font-semibold underline" onClick={() => onChange({ binding: o.binding && Boolean(addOns.binding), lamination: o.lamination && Boolean(addOns.lamination) })}>
+          <button type="button" className="font-semibold underline" onClick={() => onChange({ binding: o.binding && Boolean(addOns.binding), lamination: o.lamination && Boolean(addOns.lamination), laminationSize: addOns.lamination ? o.laminationSize : null })}>
             Remove it
           </button>
         </p>
       )}
 
-      {!price && !((o.binding && !addOns.binding) || (o.lamination && !addOns.lamination)) && (
+      {!price && !needsLaminationSize && !((o.binding && !addOns.binding) || (o.lamination && !addOns.lamination)) && (
         <p role="alert" className="flex gap-2 rounded-lg bg-cancelled-tint p-3 text-sm text-cancelled">
           <CircleAlert size={20} aria-hidden className="shrink-0" />
           We don&apos;t offer this size, paper and color together. Choose another paper type or size.

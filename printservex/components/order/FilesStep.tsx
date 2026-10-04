@@ -145,6 +145,7 @@ export function FilesStep(props: FilesStepProps) {
                     onChange={(patch) => props.onChangeOptions(line.id, patch)}
                     onDetails={(patch) => props.onChangeDetails(line.id, patch)}
                     onRemove={() => props.onRemoveLine(line.id)}
+                    showProblem={showProblems}
                   />
                 );
               }

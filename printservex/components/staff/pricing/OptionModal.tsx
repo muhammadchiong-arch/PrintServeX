@@ -24,11 +24,13 @@ export function OptionModal({
   initial,
   onClose,
   onSave,
+  fixedPrice,
 }: {
   kind: OptionKind;
   initial: OptionDraft | null; // null = adding a new one
   onClose: () => void;
   onSave: (draft: OptionDraft) => Promise<boolean>; // true = saved, close the modal
+  fixedPrice?: string; // add-ons priced in code (lamination by size): shown instead of the price fields
 }) {
   const [f, setF] = useState<OptionDraft>(initial ?? { name: "", dimensions: "", price: "", unit: "" });
   const [tried, setTried] = useState(false);
@@ -72,7 +74,8 @@ export function OptionModal({
       {kind === "sizes" && (
         <Input size="md" label="Dimensions (optional)" value={f.dimensions} onChange={(e) => setF({ ...f, dimensions: e.target.value })} placeholder="8.5 × 14 in" />
       )}
-      {kind === "addons" && (
+      {kind === "addons" && fixedPrice && <p className="text-sm text-slate">{fixedPrice}</p>}
+      {kind === "addons" && !fixedPrice && (
         <div className="grid grid-cols-2 gap-3">
           <Input size="md" label="Price (₱)" type="number" inputMode="decimal" min={0} step="0.25" value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} error={tried ? errors.price : undefined} />
           <Input size="md" label="Unit" value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} placeholder="per set" error={tried ? errors.unit : undefined} />

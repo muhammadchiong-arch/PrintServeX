@@ -122,7 +122,7 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
 
     // Document Printing needs its print options; the other services don't take them
     if ((service.kind === "document") !== (item.options !== null)) return { ok: false, error: TRY_AGAIN };
-    const options = item.options ?? { sizeId: "", typeId: "", color: false, pages: 1, copies: 1, binding: false, lamination: false };
+    const options = item.options ?? { sizeId: "", typeId: "", color: false, pages: 1, copies: 1, binding: false, lamination: false, laminationSize: null };
     const details = { ...item.details };
     const line = { service, options, details, hasFile: bytes !== null };
     const problem = checkLineDetails(service, details, line.hasFile, sizeIds);
@@ -138,6 +138,11 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
     const sizeName = pricing.sizes.find((s) => s.id === (service.kind === "document" ? options.sizeId : details.sizeId))?.name;
     if (details.sizeId) details.sizeName = sizeName;
     const doc = service.kind === "document" && price.status === "priced" ? price.file : null;
+    // Keep the lamination size and its price per sheet with the order (lamination_price = the subtotal)
+    if (doc && doc.laminationRate !== null && options.laminationSize) {
+      details.laminationSize = options.laminationSize;
+      details.laminationRate = doc.laminationRate;
+    }
     const paperName = doc ? pricing.types.find((t) => t.id === options.typeId)?.name : undefined;
     if (doc && (!sizeName || !paperName)) return { ok: false, error: TRY_AGAIN };
     const quantity = service.kind === "document" ? options.copies : (details.quantity ?? 1);

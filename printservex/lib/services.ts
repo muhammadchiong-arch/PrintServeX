@@ -43,6 +43,9 @@ export type LineDetails = {
   height?: number; // large_format
   unit?: "cm" | "ft"; // large_format
   notes?: string; // instructions for staff
+  // document + lamination: set by the server when the order is placed, so the order keeps them
+  laminationSize?: "id" | "short" | "a4" | "legal";
+  laminationRate?: number; // ₱ per sheet at order time
 };
 
 export const LIMITS = {

@@ -4,7 +4,7 @@
 
 import type { CustomerDetails } from "@/lib/order-details";
 import type { Order } from "@/lib/orders";
-import type { PrintOptions } from "@/lib/price";
+import { isLaminationSize, type PrintOptions } from "@/lib/price";
 import { LIMITS, type LineDetails } from "@/lib/services";
 
 export type FileMeta = { name: string; size: number };
@@ -60,11 +60,23 @@ function parseOptions(o: unknown): PrintOptions | null {
     !int(o.pages, 1, 2000) ||
     !int(o.copies, 1, 99) ||
     !bool(o.binding) ||
-    !bool(o.lamination)
+    !bool(o.lamination) ||
+    // Business rule: lamination needs one of the four sizes. Only the size is read, never a price.
+    (o.lamination ? !isLaminationSize(o.laminationSize) : o.laminationSize !== null && o.laminationSize !== undefined && !isLaminationSize(o.laminationSize))
   ) {
     return null;
   }
-  return { sizeId: o.sizeId, typeId: o.typeId, color: o.color, pages: o.pages, copies: o.copies, binding: o.binding, lamination: o.lamination };
+  return {
+    sizeId: o.sizeId,
+    typeId: o.typeId,
+    color: o.color,
+    pages: o.pages,
+    copies: o.copies,
+    binding: o.binding,
+    lamination: o.lamination,
+    // A size without lamination means nothing, so it is dropped
+    laminationSize: o.lamination && isLaminationSize(o.laminationSize) ? o.laminationSize : null,
+  };
 }
 
 // Keeps only the known option fields, each with the right type. Unknown fields are dropped.
