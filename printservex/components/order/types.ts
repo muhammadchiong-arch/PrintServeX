@@ -1,5 +1,5 @@
 import { formatPeso } from "@/lib/format";
-import { laminationSizeInfo, type LineInput, type PrintOptions } from "@/lib/price";
+import { LAMINATION_LABELS, type LineInput, type PrintOptions } from "@/lib/price";
 import type { PaperSize, PaperType } from "@/lib/pricing-data";
 import { areaSqFt, BACKGROUND_LABELS, type LineDetails, type Service, type ServiceCategory } from "@/lib/services";
 
@@ -33,7 +33,7 @@ export function describeOptions(o: PrintOptions, catalog: Pick<Catalog, "sizes" 
   const size = catalog.sizes.find((s) => s.id === o.sizeId)?.name ?? "?";
   const type = catalog.types.find((t) => t.id === o.typeId)?.name ?? "?";
   return [size, type, o.color ? "Color" : "B&W", `${o.pages} pp × ${o.copies}`]
-    .concat(o.binding ? ["Binding"] : [], o.lamination ? [o.laminationSize ? `Lamination ${laminationSizeInfo(o.laminationSize).label}` : "Lamination"] : [])
+    .concat(o.binding ? ["Binding"] : [], o.lamination ? [o.laminationSize ? `Lamination ${LAMINATION_LABELS[o.laminationSize]}` : "Lamination"] : [])
     .join(" · ");
 }
 
@@ -48,7 +48,7 @@ export function describeLine(line: OrderLine, service: Service, catalog: Pick<Ca
       case "finishing":
         return [size, `× ${d.quantity}`];
       case "photo":
-        return [d.background && BACKGROUND_LABELS[d.background], `× ${d.quantity}`];
+        return [d.background && BACKGROUND_LABELS[d.background], d.laminationSize && `Lamination ${LAMINATION_LABELS[d.laminationSize]}`, `× ${d.quantity}`];
       case "design":
         return [d.mode === "design" ? "Design it for me" : "Using my file", d.sizeText, `× ${d.quantity}`];
       case "large_format": {

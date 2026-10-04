@@ -88,6 +88,12 @@ export function PriceSummary({ chosen, lines, catalog, totals, prices, primary, 
                       {formatPeso(service.unitPrice)} {service.unitLabel} × {l.details.quantity}
                     </span>
                   )}
+                  {/* Photo & ID lamination (also counted when the photo itself is priced by staff) */}
+                  {p && (p.status === "quote" || !p.file) && p.lamination && (
+                    <span className="text-xs text-slate">
+                      lamination {p.lamination.quantity} × {formatPeso(p.lamination.rate)} = {formatPeso(p.lamination.amount)}
+                    </span>
+                  )}
                 </div>
               );
             })}

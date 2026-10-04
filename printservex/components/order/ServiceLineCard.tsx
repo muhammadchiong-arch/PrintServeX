@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { cn } from "@/lib/cn";
 import { formatFileSize, isImage } from "@/lib/files";
 import { formatPeso } from "@/lib/format";
-import type { LinePrice } from "@/lib/price";
+import { isLaminationSize, LAMINATION_LABELS, laminationRate, type AddOns, type LinePrice } from "@/lib/price";
 import { areaSqFt, BACKGROUND_LABELS, fileTypesText, LIMITS, multiFile, type LineDetails, type Service } from "@/lib/services";
 import type { Catalog, OrderLine } from "./types";
 
@@ -18,6 +18,7 @@ type ServiceLineCardProps = {
   service: Service;
   catalog: Catalog;
   price: LinePrice | null; // null = options not complete yet
+  addOns: AddOns; // for the Photo & ID lamination add-on
   problem: string | null; // what's still missing, from checkLineDetails
   showProblem: boolean; // true after the customer tried to continue
   onDetails: (patch: Partial<LineDetails>) => void;
@@ -51,7 +52,7 @@ function NumberField({ label, value, onValue, decimals = false, min, max }: { la
  * Options for one line of a non-document service (binding, photos, design, large format,
  * customized, school & business). Shows only the options that apply to that kind.
  */
-export function ServiceLineCard({ line, service, catalog, price, problem, showProblem, onDetails, onFile, onRemove }: ServiceLineCardProps) {
+export function ServiceLineCard({ line, service, catalog, price, addOns, problem, showProblem, onDetails, onFile, onRemove }: ServiceLineCardProps) {
   const d = line.details;
   const sizeOptions = catalog.sizes.map((s) => ({ value: s.id, label: s.name }));
   const accept = service.fileTypes.map((t) => `.${t}`).join(",");
@@ -60,6 +61,13 @@ export function ServiceLineCard({ line, service, catalog, price, problem, showPr
   const needsFile = service.kind === "design" ? d.mode === "file" : service.fileRule === "required";
   const area = service.kind === "large_format" ? areaSqFt(d) : null;
   const Icon = line.file && isImage(line.file.name) ? ImageIcon : FileText;
+  // Photo & ID: optional lamination, one per piece, priced by size (set by the admin)
+  const lamination = price?.lamination ?? null;
+  const laminationGone = Boolean(d.laminationSize) && laminationRate(addOns, d.laminationSize) === null;
+  const laminationOptions = [
+    { value: "", label: "No lamination" },
+    ...(addOns.lamination?.sizes ?? []).map((s) => ({ value: s.id, label: `${s.label} · +${formatPeso(s.price)} each` })),
+  ];
 
   const quantity = (label = "Quantity") => (
     <NumberField label={label} value={d.quantity} min={1} max={LIMITS.quantity} onValue={(quantity) => onDetails({ quantity })} />
@@ -132,6 +140,14 @@ export function ServiceLineCard({ line, service, catalog, price, problem, showPr
               ]}
             />
           </div>
+        )}
+        {service.kind === "photo" && addOns.lamination && (
+          <Select
+            label="Lamination (optional)"
+            value={d.laminationSize ?? ""}
+            onChange={(e) => onDetails({ laminationSize: isLaminationSize(e.target.value) ? e.target.value : undefined })}
+            options={laminationOptions}
+          />
         )}
         {(service.kind === "design" || service.kind === "custom") && (
           <Input label="Size (optional)" value={d.sizeText ?? ""} maxLength={LIMITS.sizeText} placeholder="e.g. 5 × 7 in" onChange={(e) => onDetails({ sizeText: e.target.value })} />
@@ -223,8 +239,26 @@ export function ServiceLineCard({ line, service, catalog, price, problem, showPr
           {problem}
         </p>
       )}
+      {lamination && (
+        <p className="text-xs text-slate">
+          Lamination {LAMINATION_LABELS[lamination.size]}: {lamination.quantity} × {formatPeso(lamination.rate)} = {formatPeso(lamination.amount)}
+        </p>
+      )}
+      {/* A lamination size the shop stopped offering while this form was open */}
+      {laminationGone && (
+        <p role="alert" className="flex items-center gap-2 rounded-lg bg-cancelled-tint p-3 text-sm text-cancelled">
+          <CircleAlert size={20} aria-hidden className="shrink-0" />
+          This lamination is no longer offered.
+          <button type="button" className="font-semibold underline" onClick={() => onDetails({ laminationSize: undefined })}>
+            Remove it
+          </button>
+        </p>
+      )}
       {price?.status === "quote" && (
-        <p className="text-xs text-slate">Staff will confirm the price for this after checking your order. It isn&apos;t in the estimate yet.</p>
+        <p className="text-xs text-slate">
+          Staff will confirm the price for this after checking your order. It isn&apos;t in the estimate yet
+          {lamination ? ", but the lamination is." : "."}
+        </p>
       )}
       {service.kind === "photo" && d.background && d.background !== "as_is" && (
         <p className="-mt-2 text-xs text-slate">{BACKGROUND_LABELS[d.background]}: staff will change it before printing.</p>

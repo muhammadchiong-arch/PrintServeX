@@ -1,6 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
-import type { AddOn, AddOnKey, AddOns, PriceRule, Prices } from "@/lib/price";
+import {
+  DEFAULT_LAMINATION_PRICES,
+  isLaminationSize,
+  LAMINATION_LABELS,
+  LAMINATION_SIZE_IDS,
+  type AddOn,
+  type AddOnKey,
+  type AddOns,
+  type LaminationPrice,
+  type PriceRule,
+  type Prices,
+} from "@/lib/price";
 import { SERVICE_KINDS, type FileRule, type Service, type ServiceCategory, type ServiceKind } from "@/lib/services";
 
 // ⚠ If your Supabase column names are different, change them here only.
@@ -23,6 +34,7 @@ export type PricingData = {
   types: PaperType[];
   rules: PriceRule[]; // active rules only
   addOnList: AddOnRow[];
+  laminationPrices: LaminationPrice[]; // ₱ per lamination size, always ID, Short, A4, Legal
   categories: ServiceCategory[]; // in display order
   services: Service[]; // in display order (supabase/009_services.sql)
 };
@@ -47,7 +59,8 @@ export function toPrices(data: PricingData): Prices {
     const a = data.addOnList.find((x) => x.key === key && x.active);
     return a ? { label: a.label, price: a.price, unit: a.unit } : null;
   };
-  const addOns: AddOns = { binding: pick("binding"), lamination: pick("lamination") };
+  const lamination = pick("lamination");
+  const addOns: AddOns = { binding: pick("binding"), lamination: lamination && { ...lamination, sizes: data.laminationPrices } };
   return { rules: data.rules, addOns };
 }
 
@@ -63,13 +76,14 @@ export async function readPricing(client: SupabaseClient, { all = false } = {}):
     const q = client.from(table).select("*");
     return all ? q : q.eq("is_active", true);
   };
-  const [sizes, types, rules, addOns, categories, services] = await Promise.all([
+  const [sizes, types, rules, addOns, categories, services, laminationSizes] = await Promise.all([
     read("paper_sizes").order("created_at"),
     read("paper_types").order("created_at"),
     client.from("price_rules").select("*").eq("is_active", true),
     read("add_ons"),
     read("service_categories").order("sort"),
     read("services").order("sort"),
+    client.from("lamination_sizes").select("key, price"),
   ]);
 
   const failed = [sizes, types, rules, addOns].find((r) => r.error);
@@ -81,8 +95,21 @@ export async function readPricing(client: SupabaseClient, { all = false } = {}):
   // page; the order form says it can't take orders until the catalog exists.
   const catalogError = categories.error ?? services.error;
   if (catalogError) console.error("Service catalog failed to load (run supabase/009_services.sql?)", catalogError.message);
+  // Lamination prices per size (010_lamination_sizes.sql). Until it is run, the default prices are used.
+  if (laminationSizes.error) console.error("Lamination prices failed to load (run supabase/010_lamination_sizes.sql?)", laminationSizes.error.message);
+  const savedLamination = new Map<string, number>();
+  for (const row of (laminationSizes.error ? [] : (laminationSizes.data ?? [])) as DbRow[]) {
+    const key = text(row, "key");
+    const price = num(row, "price");
+    if (isLaminationSize(key) && price !== null) savedLamination.set(key, price);
+  }
 
   return {
+    laminationPrices: LAMINATION_SIZE_IDS.map((id) => ({
+      id,
+      label: LAMINATION_LABELS[id],
+      price: savedLamination.get(id) ?? DEFAULT_LAMINATION_PRICES[id],
+    })),
     sizes: ((sizes.data ?? []) as DbRow[]).flatMap((s) => {
       const id = text(s, "id");
       const name = text(s, COLUMNS.sizeName);

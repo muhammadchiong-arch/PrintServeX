@@ -157,6 +157,7 @@ export function FilesStep(props: FilesStepProps) {
                   service={service}
                   catalog={catalog}
                   price={priceLine(prices, input, sizeIds)}
+                  addOns={prices.addOns}
                   problem={checkLineDetails(service, line.details, input.hasFile, sizeIds)}
                   showProblem={showProblems}
                   onDetails={(patch) => props.onChangeDetails(line.id, patch)}

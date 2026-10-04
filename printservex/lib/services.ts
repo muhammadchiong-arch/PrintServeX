@@ -43,9 +43,9 @@ export type LineDetails = {
   height?: number; // large_format
   unit?: "cm" | "ft"; // large_format
   notes?: string; // instructions for staff
-  // document + lamination: set by the server when the order is placed, so the order keeps them
+  // Lamination size: chosen by the customer (photo), or set by the server from the print options (document)
   laminationSize?: "id" | "short" | "a4" | "legal";
-  laminationRate?: number; // ₱ per sheet at order time
+  laminationRate?: number; // ₱ per sheet / piece at order time, always set by the server
 };
 
 export const LIMITS = {
@@ -101,6 +101,8 @@ export function checkLineDetails(service: Service, d: LineDetails, hasFile: bool
   if (service.fileRule === "required" && !hasFile) return `Upload a file for ${service.name}.`;
   if (service.fileRule === "none" && hasFile) return `${service.name} doesn't take a file.`;
   if (!hasLength(d.notes, LIMITS.notes)) return `Keep the notes under ${LIMITS.notes} characters.`;
+  // Lamination as a line option is for Photo & ID only (documents use their print options)
+  if (d.laminationSize !== undefined && service.kind !== "photo") return "Lamination isn't offered for this service.";
   if (service.kind === "document") return d.sides === "single" || d.sides === "double" ? null : "Choose single- or double-sided.";
 
   if (!isQuantity(d.quantity)) return `Enter a quantity from 1 to ${LIMITS.quantity}.`;

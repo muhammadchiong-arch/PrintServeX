@@ -9,7 +9,7 @@ import { Select } from "@/components/ui/Select";
 import { ToggleChip } from "@/components/ui/ToggleChip";
 import { formatFileSize, isImage } from "@/lib/files";
 import { formatPeso } from "@/lib/format";
-import { isLaminationSize, LAMINATION_PRICE_RANGE, LAMINATION_SIZES, type AddOns, type FilePrice, type PrintOptions } from "@/lib/price";
+import { isLaminationSize, laminationRange, type AddOns, type FilePrice, type PrintOptions } from "@/lib/price";
 import type { LineDetails } from "@/lib/services";
 import type { Catalog, OrderLine } from "./types";
 
@@ -26,10 +26,6 @@ type FileCardProps = {
 
 const MAX_PAGES = 2000;
 
-const LAMINATION_OPTIONS = [
-  { value: "", label: "Choose a size" },
-  ...LAMINATION_SIZES.map((s) => ({ value: s.id, label: `${s.label} · ${formatPeso(s.pricePerSheet)}/sheet` })),
-];
 
 // One uploaded document with all its print options
 export function FileCard({ item, price, addOns, catalog, onChange, onDetails, onRemove, showProblem }: FileCardProps) {
@@ -39,6 +35,12 @@ export function FileCard({ item, price, addOns, catalog, onChange, onDetails, on
   const [pagesInput, setPagesInput] = useState(String(o.pages));
   const pagesValid = /^\d+$/.test(pagesInput) && Number(pagesInput) >= 1 && Number(pagesInput) <= MAX_PAGES;
   const needsLaminationSize = o.lamination && Boolean(addOns.lamination) && !o.laminationSize;
+  // Lamination sizes and their prices, as set by the admin
+  const lamRange = laminationRange(addOns);
+  const laminationOptions = [
+    { value: "", label: "Choose a size" },
+    ...(addOns.lamination?.sizes ?? []).map((s) => ({ value: s.id, label: `${s.label} · ${formatPeso(s.price)}/sheet` })),
+  ];
   const pagesText = item.pagesDetected ? `${item.pagesDetected} ${item.pagesDetected === 1 ? "page" : "pages"}` : "Pages not counted";
 
   return (
@@ -131,7 +133,7 @@ export function FileCard({ item, price, addOns, catalog, onChange, onDetails, on
           {addOns.lamination && (
             // Turning lamination off also clears its size
             <ToggleChip pressed={o.lamination} onToggle={() => onChange({ lamination: !o.lamination, laminationSize: null })}>
-              {addOns.lamination.label} +{formatPeso(LAMINATION_PRICE_RANGE.min)}–{formatPeso(LAMINATION_PRICE_RANGE.max)}/sheet
+              {addOns.lamination.label} {lamRange && `+${formatPeso(lamRange.min)}–${formatPeso(lamRange.max)}/sheet`}
             </ToggleChip>
           )}
         </div>
@@ -142,7 +144,7 @@ export function FileCard({ item, price, addOns, catalog, onChange, onDetails, on
             label="Lamination size"
             value={o.laminationSize ?? ""}
             onChange={(e) => onChange({ laminationSize: isLaminationSize(e.target.value) ? e.target.value : null })}
-            options={LAMINATION_OPTIONS}
+            options={laminationOptions}
             error={showProblem && needsLaminationSize ? "Choose a lamination size." : undefined}
           />
         </div>
