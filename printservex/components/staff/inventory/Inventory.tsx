@@ -9,10 +9,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PageTitle, tableHead } from "../parts";
 import { useStaff } from "../StaffStore";
-import { AddItemModal, StockModal, type StockAction } from "./InventoryModals";
+import { ItemModal, StockModal, type StockAction } from "./InventoryModals";
 
 // Business rule: an item is low on stock when the quantity is at or below its reorder level
 export const isLow = (i: { qty: number; reorderLevel: number }) => i.qty <= i.reorderLevel;
+// Business rule: nothing left. Printing that needs a linked out-of-stock item can't start.
+export const isOut = (i: { qty: number }) => i.qty <= 0;
 
 // S7
 export function Inventory() {
@@ -74,7 +76,9 @@ export function Inventory() {
                   <td className="tabular px-4 py-2.5 text-right font-semibold">{i.qty}</td>
                   <td className="tabular px-4 py-2.5 text-right text-slate">{i.reorderLevel}</td>
                   <td className="px-4 py-2.5">
-                    {isLow(i) ? (
+                    {isOut(i) ? (
+                      <StatusBadge status="out_of_stock" size="sm" />
+                    ) : isLow(i) ? (
                       <StatusBadge status="low_stock" size="sm" />
                     ) : (
                       <span className="inline-flex items-center gap-1 text-xs font-semibold text-completed">
@@ -101,7 +105,7 @@ export function Inventory() {
       </div>
 
       <StockModal action={stock} onClose={() => setStock(null)} />
-      <AddItemModal open={adding} onClose={() => setAdding(false)} />
+      <ItemModal key={adding ? "adding" : "closed"} open={adding} item={null} onClose={() => setAdding(false)} />
     </>
   );
 }

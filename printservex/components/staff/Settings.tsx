@@ -79,7 +79,7 @@ function BackupRestore() {
   // but not the uploaded files. It's a copy to keep; restoring is done in Supabase (below).
   const createBackup = () => {
     const now = new Date();
-    const data: StaffData = { orders: staff.orders, inventory: staff.inventory, users: staff.users, activity: staff.activity };
+    const data: StaffData = { orders: staff.orders, inventory: staff.inventory, users: staff.users, activity: staff.activity, paper: staff.paper };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     // e.g. 202610011142 (Philippine time)
     const stamp = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })

@@ -11,7 +11,9 @@ import { useToast } from "@/components/ui/Toast";
 import type { PaymentMethod } from "@/lib/orders";
 import * as actions from "@/lib/staff-actions";
 import type { StaffData } from "@/lib/staff-data";
-import type { StaffUser } from "@/lib/staff-types";
+import type { InventoryLink, StaffUser } from "@/lib/staff-types";
+
+type ItemFields = { name: string; unit: string; reorderLevel: number; link: InventoryLink | null };
 
 // Other staff (and online customers) change data too, so reload it every minute
 const REFRESH_MS = 60_000;
@@ -27,7 +29,9 @@ type StaffContext = StaffData & {
   setFinalPrice: (ref: string, amount: number, note: string) => Promise<boolean>;
   setRemarks: (ref: string, remarks: string) => Promise<boolean>;
   moveStock: (itemId: string, type: "in" | "out", qty: number, note: string) => Promise<boolean>;
-  addItem: (item: { name: string; unit: string; qty: number; reorderLevel: number }) => Promise<boolean>;
+  addItem: (item: ItemFields & { qty: number }) => Promise<boolean>;
+  updateItem: (itemId: string, item: ItemFields) => Promise<boolean>;
+  deleteItem: (itemId: string) => Promise<boolean>; // admin only
   setUserActive: (id: string, active: boolean) => Promise<boolean>;
   logBackup: (details: string) => Promise<boolean>;
   refresh: () => void;
@@ -88,6 +92,8 @@ export function StaffStoreProvider({ me, data, children }: { me: StaffUser; data
       setRemarks: (ref, remarks) => run(actions.setRemarks(ref, remarks)),
       moveStock: (itemId, type, qty, note) => run(actions.moveStock(itemId, type, qty, note)),
       addItem: (item) => run(actions.addItem(item)),
+      updateItem: (itemId, item) => run(actions.updateItem(itemId, item)),
+      deleteItem: (itemId) => run(actions.deleteItem(itemId)),
       setUserActive: (id, active) => run(actions.setStaffActive(id, active)),
       logBackup: (details) => run(actions.logBackup(details)),
     }),

@@ -2,7 +2,7 @@ import { CircleCheck, CircleX, Clock, PackageCheck, Printer, TriangleAlert, type
 import { cn } from "@/lib/cn";
 import { STATUS_LABELS, type OrderStatus } from "@/lib/status";
 
-type BadgeKind = OrderStatus | "low_stock";
+type BadgeKind = OrderStatus | "low_stock" | "out_of_stock";
 
 // Accessibility rule: every status shows an icon + text, never color alone
 const styles: Record<BadgeKind, { icon: LucideIcon; className: string }> = {
@@ -12,6 +12,7 @@ const styles: Record<BadgeKind, { icon: LucideIcon; className: string }> = {
   completed: { icon: CircleCheck, className: "bg-completed-tint text-completed" },
   cancelled: { icon: CircleX, className: "bg-cancelled-tint text-cancelled" },
   low_stock: { icon: TriangleAlert, className: "bg-cancelled-tint text-cancelled" },
+  out_of_stock: { icon: CircleX, className: "bg-cancelled-tint text-cancelled" },
 };
 
 type StatusBadgeProps = {
@@ -23,7 +24,7 @@ type StatusBadgeProps = {
 
 export function StatusBadge({ status, size = "md", className }: StatusBadgeProps) {
   const { icon: Icon, className: color } = styles[status];
-  const label = status === "low_stock" ? "Low stock" : STATUS_LABELS[status];
+  const label = status === "low_stock" ? "Low stock" : status === "out_of_stock" ? "Out of stock" : STATUS_LABELS[status];
   return (
     <span
       className={cn(

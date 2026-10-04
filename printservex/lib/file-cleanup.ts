@@ -75,6 +75,10 @@ async function cleanAbandonedUploads(): Promise<number> {
 export async function cleanupFiles(): Promise<CleanupResult> {
   const orderFiles = await cleanOldOrderFiles();
   const abandonedFiles = await cleanAbandonedUploads();
+  // Wrong Track-order tries only matter for an hour (lib/track.ts); remove those older than a day
+  const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
+  const { error: triesError } = await supabaseAdmin.from("track_attempts").delete().lt("at", dayAgo);
+  if (triesError) console.error("Cleaning track_attempts failed", triesError.message);
   if (orderFiles + abandonedFiles > 0) {
     await supabaseAdmin.from("audit_log").insert({
       actor_label: "System",

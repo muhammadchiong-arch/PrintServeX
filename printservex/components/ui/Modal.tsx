@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
+import { cn } from "@/lib/cn";
 
 type ModalProps = {
   open: boolean;
@@ -11,11 +12,12 @@ type ModalProps = {
   children?: React.ReactNode;
   // Buttons shown at the bottom right
   footer?: React.ReactNode;
+  wide?: boolean; // a large box, e.g. for viewing a customer's file
 };
 
 // Uses the browser's built-in <dialog>: it traps keyboard focus,
 // closes with Esc and dims the page behind it.
-export function Modal({ open, onClose, title, description, children, footer }: ModalProps) {
+export function Modal({ open, onClose, title, description, children, footer, wide = false }: ModalProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -35,7 +37,11 @@ export function Modal({ open, onClose, title, description, children, footer }: M
       // clicked (e.g. paying twice) and would show its content being cleared.
       // Clicking the dark area outside the box closes it
       onClick={(e) => e.target === ref.current && onClose()}
-      className="m-auto w-[440px] max-w-[calc(100%-32px)] rounded-xl bg-surface p-0 text-navy shadow-pop backdrop:bg-navy/45 transition-[opacity,translate] duration-200 ease-snap starting:open:translate-y-2 starting:open:opacity-0 backdrop:transition-opacity backdrop:duration-200 starting:open:backdrop:opacity-0"
+      className={cn(
+        "m-auto max-w-[calc(100%-32px)] rounded-xl",
+        wide ? "w-[960px]" : "w-[440px]",
+        "bg-surface p-0 text-navy shadow-pop backdrop:bg-navy/45 transition-[opacity,translate] duration-200 ease-snap starting:open:translate-y-2 starting:open:opacity-0 backdrop:transition-opacity backdrop:duration-200 starting:open:backdrop:opacity-0",
+      )}
     >
       <div className="flex flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-4">
