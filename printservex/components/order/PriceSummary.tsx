@@ -78,7 +78,9 @@ export function PriceSummary({ chosen, lines, catalog, totals, prices, primary, 
                     <span className="text-xs text-slate">
                       {l.options.pages} pp × {l.options.copies} × {formatPeso(p.file.rate)}
                       {p.file.binding > 0 && ` · binding ${formatPeso(p.file.binding)}`}
-                      {p.file.lamination > 0 && ` · lamination ${formatPeso(p.file.lamination)}`}
+                      {p.file.lamination > 0 &&
+                        p.file.laminationRate !== null &&
+                        ` · lamination ${p.file.laminationSheets} × ${formatPeso(p.file.laminationRate)} = ${formatPeso(p.file.lamination)}`}
                     </span>
                   )}
                   {p?.status === "priced" && !p.file && service.unitPrice !== null && (

@@ -1,5 +1,5 @@
 import { formatPeso } from "@/lib/format";
-import type { LineInput, PrintOptions } from "@/lib/price";
+import { laminationSizeInfo, type LineInput, type PrintOptions } from "@/lib/price";
 import type { PaperSize, PaperType } from "@/lib/pricing-data";
 import { areaSqFt, BACKGROUND_LABELS, type LineDetails, type Service, type ServiceCategory } from "@/lib/services";
 
@@ -28,12 +28,12 @@ export function lineInput(line: OrderLine, service: Service): LineInput {
   return { service, options: line.options, details: line.details, hasFile: Boolean(line.file) };
 }
 
-// "A4 · Bond 80gsm · B&W · 24 pp × 2 · Binding"
+// "A4 · Bond 80gsm · B&W · 24 pp × 2 · Binding · Lamination A4"
 export function describeOptions(o: PrintOptions, catalog: Pick<Catalog, "sizes" | "types">): string {
   const size = catalog.sizes.find((s) => s.id === o.sizeId)?.name ?? "?";
   const type = catalog.types.find((t) => t.id === o.typeId)?.name ?? "?";
   return [size, type, o.color ? "Color" : "B&W", `${o.pages} pp × ${o.copies}`]
-    .concat(o.binding ? ["Binding"] : [], o.lamination ? ["Lamination"] : [])
+    .concat(o.binding ? ["Binding"] : [], o.lamination ? [o.laminationSize ? `Lamination ${laminationSizeInfo(o.laminationSize).label}` : "Lamination"] : [])
     .join(" · ");
 }
 

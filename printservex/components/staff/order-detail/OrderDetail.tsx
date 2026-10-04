@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
 import { formatDate, formatDateTime, formatPeso, formatPhone, formatTime } from "@/lib/format";
-import { amountDue, canCancel, estimatedTotal, isQuote, itemAddOns, itemPrinting, itemTotal, NEXT_STATUS, PAYMENT_LABELS, quoteCount, type Order, type OrderItem } from "@/lib/orders";
+import { amountDue, canCancel, estimatedTotal, isQuote, itemAddOns, itemPrinting, itemTotal, laminationLabel, laminationLine, NEXT_STATUS, PAYMENT_LABELS, quoteCount, type Order, type OrderItem } from "@/lib/orders";
 import { areaSqFt, BACKGROUND_LABELS } from "@/lib/services";
 import { getFileLink } from "@/lib/staff-actions";
 import { STATUS_LABELS, type OrderStatus } from "@/lib/status";
@@ -360,7 +360,9 @@ function ItemCard({ item: i, orderRef, position }: { item: OrderItem; orderRef: 
   const area = i.kind === "large_format" ? areaSqFt(d) : null;
   const fields: [string, string][] = (() => {
     switch (i.kind) {
-      case "document":
+      case "document": {
+        // Lamination: size, price per sheet × sheets = subtotal, as saved with the order
+        const lam = laminationLine(i);
         return [
           ["Paper size", i.size ?? "—"],
           ["Paper type", i.paper ?? "—"],
@@ -368,8 +370,10 @@ function ItemCard({ item: i, orderRef, position }: { item: OrderItem; orderRef: 
           ["Pages", String(i.pages ?? "—")],
           ["Copies", String(i.copies ?? "—")],
           ["Sides", d.sides === "double" ? "Double" : "Single"],
-          ["Add-ons", [i.binding && "Binding", i.lamination && "Lamination"].filter(Boolean).join(", ") || "None"],
+          ["Add-ons", [i.binding && "Binding", i.lamination && laminationLabel(i)].filter(Boolean).join(", ") || "None"],
+          ...(lam ? [["Lamination", `${lam.size} · ${lam.quantity} × ${formatPeso(lam.unitPrice)} = ${formatPeso(lam.subtotal)}`] as [string, string]] : []),
         ];
+      }
       case "finishing":
         return [["Paper size", d.sizeName ?? "—"], ["Quantity", String(i.quantity)]];
       case "photo":

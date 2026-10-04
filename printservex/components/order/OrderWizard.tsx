@@ -65,6 +65,7 @@ export function OrderWizard({ sizes, types, categories, services, prices, varian
       copies: 1,
       binding: false,
       lamination: false,
+      laminationSize: null,
     }),
     [defaultSizeId, types],
   );

@@ -10,7 +10,7 @@ import { useToast } from "@/components/ui/Toast";
 import { saveAddOn, saveOption, savePrices as savePricesOnServer, setOptionActive, type PriceCell } from "@/lib/admin-actions";
 import { cn } from "@/lib/cn";
 import { formatPeso } from "@/lib/format";
-import { findRate, type AddOnKey } from "@/lib/price";
+import { findRate, LAMINATION_SIZES, type AddOnKey } from "@/lib/price";
 import type { PricingData } from "@/lib/pricing-data";
 import { PageTitle, tableHead } from "../parts";
 import { OptionModal, type OptionDraft, type OptionKind } from "./OptionModal";
@@ -25,6 +25,8 @@ type Result = { ok: true } | { ok: false; error: string } | null;
 const ADD_LABEL = { sizes: "Add size", papers: "Add paper type" } as const;
 const DETAIL_COL: Record<OptionKind, string> = { sizes: "Dimensions", papers: "Available sizes", addons: "Price" };
 const ARCHIVE_KIND = { sizes: "size", papers: "type", addons: "addon" } as const;
+// Business rule: lamination is priced by its size (lib/price.ts), not by the add_ons table
+const LAMINATION_PRICES = `${LAMINATION_SIZES.map((s) => `${s.label} ${formatPeso(s.pricePerSheet)}`).join(" · ")} per sheet`;
 const NO_SERVER = "We couldn't reach the server. Check your connection and try again.";
 
 // S9 (admin only). Shows the real options from Supabase, archived ones too.
@@ -53,7 +55,7 @@ export function Pricing({ data }: { data: PricingData }) {
     addons: data.addOnList.map((a) => ({
       id: a.key,
       name: a.label,
-      detail: `${formatPeso(a.price)} ${a.unit}`,
+      detail: a.key === "lamination" ? LAMINATION_PRICES : `${formatPeso(a.price)} ${a.unit}`,
       archived: !a.active,
       draft: { ...blank, name: a.label, price: a.price.toFixed(2), unit: a.unit },
     })),
@@ -250,6 +252,7 @@ export function Pricing({ data }: { data: PricingData }) {
           initial={editing.row?.draft ?? null}
           onClose={() => setEditing(null)}
           onSave={(f) => saveRow(editing.kind, editing.row, f)}
+          fixedPrice={editing.kind === "addons" && editing.row?.id === "lamination" ? `Price by size: ${LAMINATION_PRICES}. These prices are set in lib/price.ts.` : undefined}
         />
       )}
     </>

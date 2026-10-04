@@ -1,14 +1,17 @@
 import { CircleAlert } from "lucide-react";
 import { formatPeso } from "@/lib/format";
 import { getPriceList } from "@/lib/price-list";
-import type { AddOns } from "@/lib/price";
+import { LAMINATION_PRICE_RANGE, type AddOns } from "@/lib/price";
 import { getShop } from "@/lib/shop-data";
 
 const cellX = "px-4 lg:px-6";
 const priceCol = "w-20 text-right lg:w-[120px]";
 
 function AddOnNote({ paperTypeName, addOns }: { paperTypeName?: string; addOns: AddOns }) {
-  const offered = [addOns.lamination, addOns.binding].flatMap((a) => (a ? [`${a.label} ${formatPeso(a.price)} ${a.unit}`] : []));
+  // Lamination is priced by its size (lib/price.ts), so it shows the range
+  const lamination = addOns.lamination && `${addOns.lamination.label} ${formatPeso(LAMINATION_PRICE_RANGE.min)}–${formatPeso(LAMINATION_PRICE_RANGE.max)} per sheet`;
+  const binding = addOns.binding && `${addOns.binding.label} ${formatPeso(addOns.binding.price)} ${addOns.binding.unit}`;
+  const offered = [lamination, binding].filter((a): a is string => Boolean(a));
   if (!paperTypeName && offered.length === 0) return null;
   return (
     <p className={`border-t border-border py-3 text-sm text-slate lg:py-3.5 ${cellX}`}>

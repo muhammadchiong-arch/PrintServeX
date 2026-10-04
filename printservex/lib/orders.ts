@@ -1,3 +1,4 @@
+import { isLaminationSize, laminationSizeInfo } from "@/lib/price";
 import { areaSqFt, BACKGROUND_LABELS, type LineDetails, type ServiceKind } from "@/lib/services";
 import type { OrderStatus } from "@/lib/status";
 
@@ -62,6 +63,27 @@ export const itemTotal = (i: OrderItem) => (i.lineTotal !== undefined ? (i.lineT
 export const isQuote = (i: OrderItem) => i.lineTotal === null;
 export const quoteCount = (o: Order) => o.items.filter(isQuote).length;
 
+// The lamination add-on of a saved document line: size, price per sheet, sheets and subtotal.
+// null = no lamination, or an order placed before lamination had sizes.
+export function laminationLine(i: OrderItem) {
+  const d = i.details ?? {};
+  if (!i.lamination || !isLaminationSize(d.laminationSize) || typeof d.laminationRate !== "number") return null;
+  const quantity = (i.pages ?? 0) * (i.copies ?? 0);
+  return {
+    addOn: "Lamination",
+    size: laminationSizeInfo(d.laminationSize).label,
+    unitPrice: d.laminationRate,
+    quantity,
+    subtotal: Math.round(d.laminationRate * quantity * 100) / 100,
+  };
+}
+
+// "Lamination A4", or just "Lamination" for orders placed before lamination had sizes
+export const laminationLabel = (i: OrderItem) => {
+  const line = laminationLine(i);
+  return line ? `Lamination ${line.size}` : "Lamination";
+};
+
 export const estimatedTotal = (o: Order) => o.items.reduce((sum, i) => sum + itemTotal(i), 0);
 
 // The amount the customer pays: the final price if staff set one, otherwise the estimate
@@ -73,7 +95,7 @@ export function describeItem(i: OrderItem): string {
   let parts: (string | null | undefined | false)[];
   switch (i.kind ?? "document") {
     case "document":
-      parts = [i.size, i.paper, i.color ? "Color" : "B&W", `${i.pages} pp × ${i.copies}`, i.binding && "Binding", i.lamination && "Lamination", d.sides === "double" && "Double-sided"];
+      parts = [i.size, i.paper, i.color ? "Color" : "B&W", `${i.pages} pp × ${i.copies}`, i.binding && "Binding", i.lamination && laminationLabel(i), d.sides === "double" && "Double-sided"];
       break;
     case "large_format": {
       const area = areaSqFt(d);
