@@ -84,7 +84,8 @@ export function rowToOrder(row: OrderRow): Order {
     status: row.status,
     history: [...row.order_status_history]
       .sort((a, b) => a.at.localeCompare(b.at))
-      .map((h) => ({ status: h.status, at: h.at, by: h.actor_label, note: h.note ?? undefined })),
+      // The database writes "Paid ₱120.00 gcash"; show it as "online payment" (PAYMENT_LABELS)
+      .map((h) => ({ status: h.status, at: h.at, by: h.actor_label, note: h.note?.replace(/^(Paid ₱[\d,.]+) gcash$/, "$1 online payment") ?? undefined })),
     createdAt: row.created_at,
   };
   if (row.final_amount !== null) order.final = { amount: Number(row.final_amount), note: row.final_note ?? "" };

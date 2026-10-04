@@ -34,7 +34,7 @@ function salesReport(orders: Order[], from: string, to: string): Report {
       ["Average order", formatPeso(paid.length ? gross / paid.length : 0)],
       ["Cancelled", String(orders.filter((o) => o.status === "cancelled" && inRange(o.createdAt, from, to)).length)],
     ],
-    cols: ["Date", "Orders", "Cash", "GCash"],
+    cols: ["Date", "Orders", "Cash", "Online payment"],
     rows: days.map((d) => {
       const list = paid.filter((o) => toDayKey(o.payment!.at) === d);
       return [formatDate(`${d}T12:00:00+08:00`), String(list.length), formatPeso(sum(list, "cash")), formatPeso(sum(list, "gcash"))];
