@@ -6,7 +6,7 @@
 
 import { revalidatePath } from "next/cache";
 import { FAILED, NOT_ADMIN, staffRpc, type ActionResult } from "@/lib/action-results";
-import type { AddOnKey } from "@/lib/price";
+import { LAMINATION_SIZE_IDS, type AddOnKey, type LaminationSize } from "@/lib/price";
 import type { Shop } from "@/lib/shop";
 import { getCurrentStaff } from "@/lib/staff-session";
 
@@ -54,6 +54,18 @@ export async function setOptionActive(kind: "size" | "type" | "addon", id: strin
 export async function saveAddOn(key: AddOnKey, label: string, price: number, unit: string): Promise<ActionResult> {
   if (!isAddOnKey(key) || typeof label !== "string" || typeof unit !== "string" || !Number.isFinite(price)) return FAILED;
   return adminRpc("admin_save_add_on", { p_key: key, p_label: label.slice(0, 40), p_price: price, p_unit: unit.slice(0, 30) });
+}
+
+// The four lamination prices (ID, Short, A4, Legal), all saved together
+export async function saveLaminationPrices(prices: Record<LaminationSize, number>): Promise<ActionResult> {
+  if (!prices || typeof prices !== "object") return FAILED;
+  const clean: Record<string, number> = {};
+  for (const id of LAMINATION_SIZE_IDS) {
+    const price = prices[id];
+    if (typeof price !== "number" || !Number.isFinite(price) || price < 0 || price > 10000) return FAILED;
+    clean[id] = Math.round(price * 100) / 100;
+  }
+  return adminRpc("admin_save_lamination_sizes", { p_prices: clean });
 }
 
 // A service's price per unit (null = "price to be confirmed by staff") and whether it's offered

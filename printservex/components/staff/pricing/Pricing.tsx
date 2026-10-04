@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { Tabs } from "@/components/ui/Tabs";
 import { useToast } from "@/components/ui/Toast";
-import { saveAddOn, saveOption, savePrices as savePricesOnServer, setOptionActive, type PriceCell } from "@/lib/admin-actions";
+import { saveAddOn, saveLaminationPrices, saveOption, savePrices as savePricesOnServer, setOptionActive, type PriceCell } from "@/lib/admin-actions";
 import { cn } from "@/lib/cn";
 import { formatPeso } from "@/lib/format";
-import { findRate, LAMINATION_SIZES, type AddOnKey } from "@/lib/price";
+import { findRate, LAMINATION_SIZE_IDS, type AddOnKey, type LaminationSize } from "@/lib/price";
 import type { PricingData } from "@/lib/pricing-data";
 import { PageTitle, tableHead } from "../parts";
 import { OptionModal, type OptionDraft, type OptionKind } from "./OptionModal";
@@ -25,8 +25,6 @@ type Result = { ok: true } | { ok: false; error: string } | null;
 const ADD_LABEL = { sizes: "Add size", papers: "Add paper type" } as const;
 const DETAIL_COL: Record<OptionKind, string> = { sizes: "Dimensions", papers: "Available sizes", addons: "Price" };
 const ARCHIVE_KIND = { sizes: "size", papers: "type", addons: "addon" } as const;
-// Business rule: lamination is priced by its size (lib/price.ts), not by the add_ons table
-const LAMINATION_PRICES = `${LAMINATION_SIZES.map((s) => `${s.label} ${formatPeso(s.pricePerSheet)}`).join(" · ")} per sheet`;
 const NO_SERVER = "We couldn't reach the server. Check your connection and try again.";
 
 // S9 (admin only). Shows the real options from Supabase, archived ones too.
@@ -43,6 +41,9 @@ export function Pricing({ data }: { data: PricingData }) {
   const activeSizes = data.sizes.filter((s) => s.active);
   const activeTypes = data.types.filter((t) => t.active);
   const blank: OptionDraft = { name: "", dimensions: "", price: "", unit: "" };
+  // Business rule: lamination is priced by its size (ID, Short, A4, Legal), set here by the admin
+  const laminationText = `${data.laminationPrices.map((l) => `${l.label} ${formatPeso(l.price)}`).join(" · ")} per sheet`;
+  const laminationDraft = Object.fromEntries(data.laminationPrices.map((l) => [l.id, l.price.toFixed(2)])) as Record<LaminationSize, string>;
   const rows: Record<OptionKind, Row[]> = {
     sizes: data.sizes.map((s) => ({ id: s.id, name: s.name, detail: s.dimensions || "—", archived: !s.active, draft: { ...blank, name: s.name, dimensions: s.dimensions } })),
     papers: data.types.map((t) => ({
@@ -55,9 +56,9 @@ export function Pricing({ data }: { data: PricingData }) {
     addons: data.addOnList.map((a) => ({
       id: a.key,
       name: a.label,
-      detail: a.key === "lamination" ? LAMINATION_PRICES : `${formatPeso(a.price)} ${a.unit}`,
+      detail: a.key === "lamination" ? laminationText : `${formatPeso(a.price)} ${a.unit}`,
       archived: !a.active,
-      draft: { ...blank, name: a.label, price: a.price.toFixed(2), unit: a.unit },
+      draft: { ...blank, name: a.label, price: a.price.toFixed(2), unit: a.unit, laminationPrices: a.key === "lamination" ? laminationDraft : undefined },
     })),
   };
 
@@ -103,7 +104,22 @@ export function Pricing({ data }: { data: PricingData }) {
     let result: Result;
     if (kind === "addons") {
       if (!row) return false;
-      result = await saveAddOn(row.id as AddOnKey, f.name, Number(f.price), f.unit).catch(() => null);
+      if (f.laminationPrices) {
+        // Lamination: save the four size prices (the database also keeps the cheapest in add_ons),
+        // then the name, only if it changed
+        const prices = Object.fromEntries(LAMINATION_SIZE_IDS.map((id) => [id, Number(f.laminationPrices![id])])) as Record<LaminationSize, number>;
+        result = await saveLaminationPrices(prices).catch(() => null);
+        if (result?.ok && f.name !== row.name) {
+          const renamed = await saveAddOn(row.id as AddOnKey, f.name, Math.min(...Object.values(prices)), f.unit || "per sheet").catch(() => null);
+          if (!renamed?.ok) {
+            toast({ kind: "error", message: "Lamination prices saved, but the new name wasn't. Please try the name again." });
+            router.refresh();
+            return false;
+          }
+        }
+      } else {
+        result = await saveAddOn(row.id as AddOnKey, f.name, Number(f.price), f.unit).catch(() => null);
+      }
     } else {
       result = await saveOption(kind === "sizes" ? "size" : "type", row?.id ?? null, f.name, f.dimensions).catch(() => null);
     }
@@ -252,7 +268,6 @@ export function Pricing({ data }: { data: PricingData }) {
           initial={editing.row?.draft ?? null}
           onClose={() => setEditing(null)}
           onSave={(f) => saveRow(editing.kind, editing.row, f)}
-          fixedPrice={editing.kind === "addons" && editing.row?.id === "lamination" ? `Price by size: ${LAMINATION_PRICES}. These prices are set in lib/price.ts.` : undefined}
         />
       )}
     </>

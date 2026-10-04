@@ -13,32 +13,39 @@ export type PriceRule = {
 };
 
 // An add-on from the add_ons table. Only binding and lamination exist (the math below knows them).
-// For lamination the table only says whether it is offered (and its name): its price is by size, below.
-export type AddOn = { label: string; price: number; unit: string };
+// Lamination is priced by its size: `sizes` holds the price of each size (lamination_sizes table).
+export type AddOn = { label: string; price: number; unit: string; sizes?: LaminationPrice[] };
 export type AddOnKey = "binding" | "lamination";
 export type AddOns = Record<AddOnKey, AddOn | null>; // null = not offered right now
 
-// Business rule: lamination is priced by its size, per laminated sheet. These four are the only sizes.
-// The browser shows these prices and the server calculates with the same list, so a price changed
-// in the browser has no effect.
-export const LAMINATION_SIZES = [
-  { id: "id", label: "ID", pricePerSheet: 15 },
-  { id: "short", label: "Short", pricePerSheet: 20 },
-  { id: "a4", label: "A4", pricePerSheet: 30 },
-  { id: "legal", label: "Legal", pricePerSheet: 40 },
-] as const;
+// Business rule: these four are the only lamination sizes. The admin sets their prices in
+// Pricing & options (supabase/010_lamination_sizes.sql). The server always uses the prices from
+// the database, so a price changed in the browser has no effect.
+export const LAMINATION_SIZE_IDS = ["id", "short", "a4", "legal"] as const;
+export type LaminationSize = (typeof LAMINATION_SIZE_IDS)[number];
+export const LAMINATION_LABELS: Record<LaminationSize, string> = { id: "ID", short: "Short", a4: "A4", legal: "Legal" };
+export type LaminationPrice = { id: LaminationSize; label: string; price: number };
 
-export type LaminationSize = (typeof LAMINATION_SIZES)[number]["id"];
+// Used only until supabase/010_lamination_sizes.sql has been run
+export const DEFAULT_LAMINATION_PRICES: Record<LaminationSize, number> = { id: 15, short: 20, a4: 30, legal: 40 };
 
 // Checks a value that came from the browser or the database
-export const isLaminationSize = (v: unknown): v is LaminationSize => LAMINATION_SIZES.some((s) => s.id === v);
-export const laminationSizeInfo = (size: LaminationSize) => LAMINATION_SIZES.find((s) => s.id === size)!;
+export const isLaminationSize = (v: unknown): v is LaminationSize => LAMINATION_SIZE_IDS.some((id) => id === v);
 
-// "₱15.00–₱40.00": cheapest to most expensive lamination size, for labels
-export const LAMINATION_PRICE_RANGE = {
-  min: Math.min(...LAMINATION_SIZES.map((s) => s.pricePerSheet)),
-  max: Math.max(...LAMINATION_SIZES.map((s) => s.pricePerSheet)),
-};
+// ₱ per sheet / piece for a lamination size, or null if lamination or that size isn't offered
+export function laminationRate(addOns: AddOns, size: LaminationSize | null | undefined): number | null {
+  if (!size || !addOns.lamination) return null;
+  return addOns.lamination.sizes?.find((s) => s.id === size)?.price ?? null;
+}
+
+// Cheapest and most expensive lamination size, for labels like "₱15.00–₱40.00"
+export function laminationRange(addOns: AddOns): { min: number; max: number } | null {
+  const prices = addOns.lamination?.sizes?.map((s) => s.price) ?? [];
+  return prices.length > 0 ? { min: Math.min(...prices), max: Math.max(...prices) } : null;
+}
+
+// One lamination charge: the size, ₱ per piece, how many pieces, and the amount
+export type LaminationCharge = { size: LaminationSize; rate: number; quantity: number; amount: number };
 
 // Everything needed to price an order (services carry their own unit price)
 export type Prices = { rules: PriceRule[]; addOns: AddOns };
@@ -79,7 +86,7 @@ const centavos = (n: number) => Math.round(n * 100) / 100;
  * - Printing = pages × copies × price per page.
  * - Binding is per set: each copy is bound separately.
  * - Lamination is per sheet: every printed page (single-sided) is laminated, at the price of
- *   the chosen lamination size (LAMINATION_SIZES). A size must be chosen.
+ *   the chosen lamination size (set by the admin). A size must be chosen.
  * Returns null if this size + paper + color combination has no price rule,
  * a chosen add-on isn't offered anymore, or lamination has no size.
  */
@@ -87,41 +94,57 @@ export function priceFile({ rules, addOns }: Prices, o: PrintOptions): FilePrice
   const rate = findRate(rules, o);
   if (rate === null) return null;
   if ((o.binding && !addOns.binding) || (o.lamination && !addOns.lamination)) return null;
-  if (o.lamination && !o.laminationSize) return null;
+  const lamRate = o.lamination ? laminationRate(addOns, o.laminationSize) : null;
+  if (o.lamination && lamRate === null) return null; // no size chosen, or that size isn't offered
 
   const printing = centavos(o.pages * o.copies * rate);
   const binding = o.binding && addOns.binding ? centavos(addOns.binding.price * o.copies) : 0;
-  const laminationRate = o.lamination && o.laminationSize ? laminationSizeInfo(o.laminationSize).pricePerSheet : null;
-  const laminationSheets = laminationRate === null ? 0 : o.pages * o.copies;
-  const lamination = laminationRate === null ? 0 : centavos(laminationRate * laminationSheets);
-  return { rate, printing, binding, lamination, laminationRate, laminationSheets, total: centavos(printing + binding + lamination) };
+  const laminationSheets = lamRate === null ? 0 : o.pages * o.copies;
+  const lamination = lamRate === null ? 0 : centavos(lamRate * laminationSheets);
+  return { rate, printing, binding, lamination, laminationRate: lamRate, laminationSheets, total: centavos(printing + binding + lamination) };
 }
 
 // One line of an order: a service, its options and whether a file is attached
 export type LineInput = { service: Service; options: PrintOptions; details: LineDetails; hasFile: boolean };
 
 // "priced" = we can estimate it now · "quote" = staff set the price (the service has no price yet)
-export type LinePrice = { status: "priced"; total: number; file: FilePrice | null } | { status: "quote" };
+// `lamination` = the lamination add-on of this line (documents and Photo & ID), or null
+export type LinePrice =
+  | { status: "priced"; total: number; file: FilePrice | null; lamination: LaminationCharge | null }
+  | { status: "quote"; lamination: LaminationCharge | null };
 
 /**
  * Price of one line. Business rules:
  * - Document Printing: per page from price_rules, plus binding / lamination (priceFile).
  * - Large-Format: unit price × square feet × quantity.
  * - Every other service: unit price × quantity.
+ * - Photo & ID: optional lamination = lamination size price × quantity.
  * - A service without a unit price is "quote": staff confirm it, it isn't added to the estimate.
+ *   Its lamination still has a known price, so that part IS added to the estimate.
  * Returns null if the line isn't valid yet (missing options, combination not offered).
  */
 export function priceLine(prices: Prices, line: LineInput, sizeIds: string[]): LinePrice | null {
   if (checkLineDetails(line.service, line.details, line.hasFile, sizeIds)) return null;
   if (line.service.kind === "document") {
     const file = priceFile(prices, line.options);
-    return file ? { status: "priced", total: file.total, file } : null;
+    if (!file) return null;
+    const lamination =
+      file.laminationRate !== null && line.options.laminationSize
+        ? { size: line.options.laminationSize, rate: file.laminationRate, quantity: file.laminationSheets, amount: file.lamination }
+        : null;
+    return { status: "priced", total: file.total, file, lamination };
+  }
+  const quantity = line.details.quantity ?? 1;
+  let lamination: LaminationCharge | null = null;
+  if (line.service.kind === "photo" && line.details.laminationSize) {
+    const rate = laminationRate(prices.addOns, line.details.laminationSize);
+    if (rate === null) return null; // that lamination size isn't offered anymore
+    lamination = { size: line.details.laminationSize, rate, quantity, amount: centavos(rate * quantity) };
   }
   const unit = line.service.unitPrice;
-  if (unit === null) return { status: "quote" };
-  const quantity = line.details.quantity ?? 1;
+  if (unit === null) return { status: "quote", lamination };
   const area = line.service.kind === "large_format" ? (areaSqFt(line.details) ?? 0) : 1;
-  return { status: "priced", total: centavos(unit * area * quantity), file: null };
+  return { status: "priced", total: centavos(unit * area * quantity + (lamination?.amount ?? 0)), file: null, lamination };
 }
 
 export type OrderPrice = {
@@ -138,7 +161,10 @@ export function priceOrder(prices: Prices, lines: LineInput[], sizeIds: string[]
   for (const line of lines) {
     const p = priceLine(prices, line, sizeIds);
     if (!p) invalidCount++;
-    else if (p.status === "quote") quoteCount++;
+    else if (p.status === "quote") {
+      quoteCount++;
+      total += p.lamination?.amount ?? 0; // the lamination of a "price confirmed by staff" photo
+    }
     else total += p.total;
   }
   return { total: centavos(total), quoteCount, invalidCount };

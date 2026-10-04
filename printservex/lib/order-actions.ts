@@ -132,16 +132,21 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
       return { ok: false, error: `The options for ${item.fileName ?? service.name} are no longer offered. Please choose others.` };
     }
     const lineTotal = price.status === "priced" ? price.total : null;
-    if (lineTotal !== null) total += lineTotal;
+    // Same as priceOrder: a "price confirmed by staff" line still adds its lamination to the estimate
+    total += lineTotal ?? price.lamination?.amount ?? 0;
 
     // Copy names in, so later renames or archived options never change this order
     const sizeName = pricing.sizes.find((s) => s.id === (service.kind === "document" ? options.sizeId : details.sizeId))?.name;
     if (details.sizeId) details.sizeName = sizeName;
     const doc = service.kind === "document" && price.status === "priced" ? price.file : null;
-    // Keep the lamination size and its price per sheet with the order (lamination_price = the subtotal)
-    if (doc && doc.laminationRate !== null && options.laminationSize) {
-      details.laminationSize = options.laminationSize;
-      details.laminationRate = doc.laminationRate;
+    // Keep the lamination size and its price each with the order (lamination_price = the subtotal).
+    // Only the server's own price is saved, never a value from the browser.
+    delete details.laminationRate;
+    if (price.lamination) {
+      details.laminationSize = price.lamination.size;
+      details.laminationRate = price.lamination.rate;
+    } else {
+      delete details.laminationSize;
     }
     const paperName = doc ? pricing.types.find((t) => t.id === options.typeId)?.name : undefined;
     if (doc && (!sizeName || !paperName)) return { ok: false, error: TRY_AGAIN };
@@ -164,10 +169,10 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
       pages: doc ? options.pages : null,
       copies: doc ? options.copies : null,
       binding: doc ? options.binding : false,
-      lamination: doc ? options.lamination : false,
+      lamination: price.lamination !== null,
       rate: doc ? doc.rate : null,
       binding_price: doc ? doc.binding : 0,
-      lamination_price: doc ? doc.lamination : 0,
+      lamination_price: price.lamination?.amount ?? 0,
       line_total: lineTotal,
     });
     items.push({
@@ -184,9 +189,9 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
       pages: doc ? options.pages : null,
       copies: doc ? options.copies : null,
       binding: doc ? options.binding : false,
-      lamination: doc ? options.lamination : false,
+      lamination: price.lamination !== null,
       rate: doc ? doc.rate : null,
-      addOnsTotal: doc ? doc.binding + doc.lamination : 0,
+      addOnsTotal: (doc ? doc.binding : 0) + (price.lamination?.amount ?? 0),
       lineTotal,
     });
   }

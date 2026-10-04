@@ -53,6 +53,8 @@ without it the cleanup never runs.
 8. `supabase/008_no_double_actions.sql` – an order can't be moved, cancelled or paid twice
 9. `supabase/009_services.sql` – service catalog (7 categories, 44 services) and orders with several services.
    Run it BEFORE deploying the code that uses it: staff orders and tracking read its new columns.
+10. `supabase/010_lamination_sizes.sql` – lamination prices by size (ID, Short, A4, Legal), changed by the admin
+   in Pricing & options → Add-ons → Lamination. Until it is run, the app uses ID ₱15, Short ₱20, A4 ₱30, Legal ₱40.
 
 After that, sign in as the owner and add the other staff on the Users page.
 

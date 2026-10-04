@@ -1,4 +1,4 @@
-import { isLaminationSize, laminationSizeInfo } from "@/lib/price";
+import { isLaminationSize, LAMINATION_LABELS } from "@/lib/price";
 import { areaSqFt, BACKGROUND_LABELS, type LineDetails, type ServiceKind } from "@/lib/services";
 import type { OrderStatus } from "@/lib/status";
 
@@ -58,20 +58,22 @@ export function itemPrinting(i: OrderItem): number {
 // "?? 0": orders kept in the browser from before this field existed
 export const itemAddOns = (i: OrderItem): number => i.addOnsTotal ?? 0;
 // The saved line total. Orders kept in the browser from before services existed have none.
-export const itemTotal = (i: OrderItem) => (i.lineTotal !== undefined ? (i.lineTotal ?? 0) : itemPrinting(i) + itemAddOns(i));
+// A "price confirmed by staff" line still counts its known add-ons (e.g. a photo's lamination).
+export const itemTotal = (i: OrderItem) => (i.lineTotal !== undefined ? (i.lineTotal ?? itemAddOns(i)) : itemPrinting(i) + itemAddOns(i));
 // Business rule: lines without a price are priced by staff (set as the final price)
 export const isQuote = (i: OrderItem) => i.lineTotal === null;
 export const quoteCount = (o: Order) => o.items.filter(isQuote).length;
 
-// The lamination add-on of a saved document line: size, price per sheet, sheets and subtotal.
+// The lamination add-on of a saved line (document or Photo & ID): size, price each, how many and subtotal.
+// Documents: one per printed sheet (pages × copies). Photos: one per piece (quantity).
 // null = no lamination, or an order placed before lamination had sizes.
 export function laminationLine(i: OrderItem) {
   const d = i.details ?? {};
   if (!i.lamination || !isLaminationSize(d.laminationSize) || typeof d.laminationRate !== "number") return null;
-  const quantity = (i.pages ?? 0) * (i.copies ?? 0);
+  const quantity = i.kind === "document" ? (i.pages ?? 0) * (i.copies ?? 0) : i.quantity;
   return {
     addOn: "Lamination",
-    size: laminationSizeInfo(d.laminationSize).label,
+    size: LAMINATION_LABELS[d.laminationSize],
     unitPrice: d.laminationRate,
     quantity,
     subtotal: Math.round(d.laminationRate * quantity * 100) / 100,
@@ -107,6 +109,7 @@ export function describeItem(i: OrderItem): string {
         d.sizeName,
         i.kind === "school_business" && (d.color ? "Color" : "B&W"),
         d.background && BACKGROUND_LABELS[d.background],
+        i.kind === "photo" && i.lamination && laminationLabel(i),
         i.kind === "design" && (d.mode === "file" ? "Own file" : "Design service"),
         d.sizeText,
         `× ${i.quantity}`,

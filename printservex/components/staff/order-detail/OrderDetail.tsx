@@ -186,7 +186,8 @@ function PriceCard({ order, locked }: { order: Order; locked: boolean }) {
   const estimate = estimatedTotal(order);
   const printing = order.items.reduce((s, i) => s + itemPrinting(i), 0);
   const bindingSets = order.items.filter((i) => i.binding).reduce((s, i) => s + (i.copies ?? 0), 0);
-  const addOns = order.items.reduce((s, i) => s + itemAddOns(i), 0);
+  // Document add-ons only: a photo's lamination is already in its line, counted in "Other services"
+  const addOns = order.items.filter((i) => i.kind === "document").reduce((s, i) => s + itemAddOns(i), 0);
   // Non-document services with a price (binding service, photos, design, ...)
   const otherServices = order.items.filter((i) => i.kind !== "document").reduce((s, i) => s + itemTotal(i), 0);
   const toConfirm = quoteCount(order);
@@ -376,8 +377,14 @@ function ItemCard({ item: i, orderRef, position }: { item: OrderItem; orderRef: 
       }
       case "finishing":
         return [["Paper size", d.sizeName ?? "—"], ["Quantity", String(i.quantity)]];
-      case "photo":
-        return [["Background", d.background ? BACKGROUND_LABELS[d.background] : "—"], ["Quantity", String(i.quantity)]];
+      case "photo": {
+        const lam = laminationLine(i);
+        return [
+          ["Background", d.background ? BACKGROUND_LABELS[d.background] : "—"],
+          ["Quantity", String(i.quantity)],
+          ...(lam ? [["Lamination", `${lam.size} · ${lam.quantity} × ${formatPeso(lam.unitPrice)} = ${formatPeso(lam.subtotal)}`] as [string, string]] : []),
+        ];
+      }
       case "design":
         return [["Request", d.mode === "file" ? "Use customer's file" : "Design it for them"], ["Size", d.sizeText || "—"], ["Quantity", String(i.quantity)]];
       case "large_format":
