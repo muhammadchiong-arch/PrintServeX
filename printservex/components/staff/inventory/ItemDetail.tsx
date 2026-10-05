@@ -23,10 +23,14 @@ const MOVE_STYLE: Record<InventoryMove["type"], { label: string; icon: LucideIco
 };
 
 // What a linked item is used for, e.g. "Paper A4 · Bond 80gsm"
-function usedForText(item: InventoryItem, paper: { sizes: { id: string; name: string }[]; types: { id: string; name: string }[] }): string {
+function usedForText(
+  item: InventoryItem,
+  paper: { sizes: { id: string; name: string }[]; types: { id: string; name: string }[]; photoSizes: { key: string; name: string }[] },
+): string {
   const l = item.link;
   if (!l) return "Not linked: counted by hand only";
   if (l.kind === "lamination") return `Lamination film ${LAMINATION_LABELS[l.size]}`;
+  if (l.kind === "photo") return `Photo paper ${paper.photoSizes.find((p) => p.key === l.size)?.name ?? l.size}`;
   const size = paper.sizes.find((s) => s.id === l.sizeId)?.name ?? "archived size";
   const type = paper.types.find((t) => t.id === l.typeId)?.name ?? "archived paper";
   return `Paper ${size} · ${type}`;

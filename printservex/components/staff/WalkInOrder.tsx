@@ -10,7 +10,7 @@ import type { Catalog } from "@/components/order/types";
 // S5: the same 4 steps as the customer form (C2), inside the staff layout.
 // On "Create order" the files are uploaded and the order is saved (same checks as online
 // orders, priced on the server), then its detail page opens.
-export function WalkInOrder(props: Catalog & { prices: Prices }) {
+export function WalkInOrder(props: Omit<Catalog, "photoSizes"> & { prices: Prices }) {
   const router = useRouter();
   const toast = useToast();
 

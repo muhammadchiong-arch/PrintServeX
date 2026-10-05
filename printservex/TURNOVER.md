@@ -38,7 +38,7 @@ If something looks wrong, write down what happened (screenshot, order number, ti
 | What | Where | Who |
 | --- | --- | --- |
 | Inventory items, stock in / stock out | Inventory | Staff and Admin |
-| Prices per page, add-on prices (binding, lamination per size), service prices | Pricing & options | Admin |
+| Prices per page, add-on prices (binding, lamination per size), service prices, Photo Printing price per size | Pricing & options | Admin |
 | Paper sizes and paper types (archive instead of deleting) | Pricing & options | Admin |
 | Shop name, address, phone, hours | Settings → Shop info | Admin |
 | Staff accounts | Users | Admin |
@@ -54,6 +54,7 @@ New prices only apply to **new** orders. Existing orders keep the price they wer
    - **Paper for printing** → choose the paper size and paper type. Starting a print of that paper takes it
      from stock automatically.
    - **Lamination film** → choose the size (ID, Short, A4, Legal). Lamination orders take it automatically.
+   - **Photo paper** → choose the photo size (Wallet, 3R, 4R…). Photo Printing takes 1 sheet per print.
    - **Not linked** → for things you only count by hand (ink, toner, staples…).
 4. **Add item**
 
@@ -118,5 +119,7 @@ After each step, explain back what happened and why. If you can't explain it yet
 - DOCX files can't be previewed in the browser (download them).
 - Customers can't pay inside the website. Online payments (GCash, Maya, bank transfer) are checked by staff at the
   counter and recorded as "Online payment".
-- Only document paper and lamination film are taken from stock automatically; other supplies are counted by hand.
+- Only document paper, lamination film and photo paper (Photo Printing) are taken from stock automatically; other
+  supplies are counted by hand.
+- Photo Printing sizes start as "Price to be confirmed". Set each size's price in Pricing & options → Services.
 - The demo inventory has sample numbers, not the shop's real stock.

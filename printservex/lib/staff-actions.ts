@@ -84,12 +84,16 @@ export async function moveStock(itemId: string, type: "in" | "out", qty: number,
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // The link as database parameters, or null if it isn't valid
-function linkParams(link: unknown): { p_paper_size_id: string | null; p_paper_type_id: string | null; p_lamination_size: string | null } | null {
+type LinkParams = { p_paper_size_id: string | null; p_paper_type_id: string | null; p_lamination_size: string | null; p_photo_size?: string };
+function linkParams(link: unknown): LinkParams | null {
   if (link === null) return { p_paper_size_id: null, p_paper_type_id: null, p_lamination_size: null };
   const l = link as InventoryLink;
   if (l?.kind === "paper" && UUID.test(String(l.sizeId)) && UUID.test(String(l.typeId)))
     return { p_paper_size_id: l.sizeId, p_paper_type_id: l.typeId, p_lamination_size: null };
   if (l?.kind === "lamination" && isLaminationSize(l.size)) return { p_paper_size_id: null, p_paper_type_id: null, p_lamination_size: l.size };
+  // p_photo_size is only sent for photo paper, so the other links still work before 013 is run
+  if (l?.kind === "photo" && typeof l.size === "string" && /^[a-z0-9-]{1,20}$/.test(l.size))
+    return { p_paper_size_id: null, p_paper_type_id: null, p_lamination_size: null, p_photo_size: l.size };
   return null;
 }
 

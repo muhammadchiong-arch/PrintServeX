@@ -75,6 +75,10 @@ The values are in Supabase and Vercel. They are never written in this repository
    Track-order tries. Until it is run, the site works but inventory is not checked.
 12. `supabase/012_demo_inventory.sql` – **optional DEMO** inventory (Bond paper, photo and sticker paper, lamination
    films with sample numbers). For testing and the school demo only. Edit or delete the items afterwards.
+13. `supabase/013_photo_print_sizes.sql` – Photo Printing sizes (Wallet, 3R, 4R, 5R, 6R, 8R, 8R+). The customer picks a
+   photo size (not a paper size); each size has its own price, set by the admin. All start as "Price to be confirmed".
+   Inventory items can be linked to a photo size ("Photo paper"). Until it is run, Photo Printing works as before
+   (one price, no size).
 
 After that, sign in as the owner and add the other staff on the Users page.
 
@@ -121,12 +125,14 @@ be changed at first sign-in). Never write real passwords in the code, the README
 ## 8. Common tasks (all in the Staff portal)
 
 - **Add an inventory item:** Inventory → Add item → name, unit, on hand, reorder level, and **Used for**
-  (Paper for printing → paper size + type, or Lamination film → size). Save.
+  (Paper for printing → paper size + type, Lamination film → size, or Photo paper → photo size). Save.
 - **Restock:** Inventory → **Stock in** on the item → quantity and a note (e.g. the delivery receipt number).
 - **Fix an item's name, unit, reorder level or link:** open the item → **Edit**. (Quantities only change with
   Stock in / Stock out, so every change is logged.)
 - **Change prices:** (admin) Pricing & options → Price per page, Add-ons (lamination has one price per size),
-  or Services.
+  or Services (Photo Printing has one price per photo size: Wallet, 3R, 4R…; empty = "Price to be confirmed").
+- **Add a photo size (e.g. 10R):** Supabase → SQL Editor → `insert into public.photo_print_sizes (key, label, width_in,
+  height_in, sort) values ('10r', '10R', 10, 12, 8);` Then set its price in Pricing & options → Services. No code change.
 - **View an order and its file:** Orders → open the order → **View file** (PDF and JPG/PNG open inside the
   site) or **Download** (DOCX files can only be downloaded).
 - **Process an order:** check the **Materials** card → **Start processing** (takes the paper and film from
@@ -169,19 +175,28 @@ Vercel → Settings → Environment Variables; without it the cleanup never runs
   Customer pages are rebuilt right after a save. Add-on prices come from the `add_ons` and `lamination_sizes`
   tables, and each order keeps the prices it was placed with. `lib/shop.ts` only holds a fallback
   for when the database can't be reached.
-- **Inventory and printing:** an item can be linked to a paper (size + type) or a lamination film size.
+- **Inventory and printing:** an item can be linked to a paper (size + type), a lamination film size or a photo size.
   **Start processing** checks and takes what the order needs in one database step
   (`staff_set_status` in `supabase/011_inventory_links.sql`); the same formula is shown to staff by
   `lib/inventory-needs.ts`. Paper = pages (÷ 2 if double-sided, rounded up) × copies; lamination film = the same
-  sheets for documents, the quantity for Photo & ID. Cancelling never puts stock back (stock in by hand).
+  sheets for documents, the quantity for Photo & ID; photo paper = 1 sheet per print (013). Cancelling never puts stock
+  back (stock in by hand).
+- **Photo Printing sizes:** `photo_print_sizes` table (013). Photo Printing is marked with `defaults.printSizes` in
+  `services`. A photo size is not a paper size. The order keeps the size name and price (`details.photoSizeName`,
+  `details.photoRate`). The customer gets a warning (never a block) if the photo is too small for the size
+  (under 150 pixels per inch) or a different shape (staff fit it without stretching) — `lib/photo-quality.ts`.
+- **Uploaded files are checked by content:** the server reads each file's first bytes, so a renamed file
+  (e.g. `.exe` → `.jpg`) is refused (`lib/file-signature.ts`).
 
 ## 12. Known limitations
 
 - DOCX files can't be previewed in the browser; staff download them.
 - Payment is recorded by staff at the counter: cash, or online payment (GCash, Maya, bank transfer) that staff check
   on the customer's phone. Customers can't pay inside the website, and online payments aren't confirmed automatically.
-- Only Document paper and lamination film are taken from stock automatically. Other supplies (ink, toner, photo
-  and sticker paper for other services) are counted by hand with Stock in / Stock out.
+- Only Document paper, lamination film and Photo Printing photo paper are taken from stock automatically. Other
+  supplies (ink, toner, sticker paper, ID photo paper) are counted by hand with Stock in / Stock out.
+- Photo Printing takes 1 sheet per print. Wallet prints cut from a bigger sheet are counted the same way.
+- There is no glossy / matte choice and no crop tool: staff fit and crop photos when printing.
 - Lamination is charged per printed page, but film is used per sheet (double-sided pages share one sheet).
 - Orders placed before `011_inventory_links.sql` don't know their paper ids, so they are not checked.
 - The demo inventory (012) has sample numbers only.

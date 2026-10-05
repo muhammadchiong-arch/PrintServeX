@@ -127,6 +127,11 @@ function parseDetails(d: unknown): LineDetails | null {
     if (!isLaminationSize(d.laminationSize)) return null;
     out.laminationSize = d.laminationSize;
   }
+  // Photo Printing: only the size key is read; its name and price are set by the server
+  if (d.photoSize !== undefined) {
+    if (!str(d.photoSize, 20) || !/^[a-z0-9-]+$/.test(d.photoSize)) return null;
+    out.photoSize = d.photoSize;
+  }
   if (d.notes !== undefined) {
     if (!str(d.notes, LIMITS.notes)) return null;
     out.notes = d.notes.trim();

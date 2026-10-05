@@ -16,7 +16,7 @@ export type Service = {
   unitLabel: string; // e.g. "per set"
   fileTypes: string[]; // allowed extensions, e.g. ["jpg", "jpeg", "png"]
   fileRule: FileRule;
-  defaults: { color?: boolean };
+  defaults: { color?: boolean; printSizes?: boolean }; // printSizes: the customer picks a photo size (Photo Printing)
   active: boolean;
 };
 
@@ -47,6 +47,10 @@ export type LineDetails = {
   laminationSize?: "id" | "short" | "a4" | "legal";
   laminationRate?: number; // ₱ per sheet / piece at order time, always set by the server
   typeId?: string; // document: the paper type id, set by the server (sizeId holds the paper size id)
+  // Photo Printing: the photo size key (e.g. "4r"), chosen by the customer. A photo size is NOT a paper size.
+  photoSize?: string;
+  photoSizeName?: string; // e.g. "4R (4 × 6 in)", set by the server so the order keeps it
+  photoRate?: number; // ₱ per print at order time, set by the server (missing = to be confirmed)
 };
 
 export const LIMITS = {
@@ -104,6 +108,9 @@ export function checkLineDetails(service: Service, d: LineDetails, hasFile: bool
   if (!hasLength(d.notes, LIMITS.notes)) return `Keep the notes under ${LIMITS.notes} characters.`;
   // Lamination as a line option is for Photo & ID only (documents use their print options)
   if (d.laminationSize !== undefined && service.kind !== "photo") return "Lamination isn't offered for this service.";
+  // Photo Printing needs a photo size; other services don't take one
+  if (service.defaults.printSizes && !d.photoSize) return "Choose a photo size.";
+  if (!service.defaults.printSizes && d.photoSize !== undefined) return "Photo size isn't offered for this service.";
   if (service.kind === "document") return d.sides === "single" || d.sides === "double" ? null : "Choose single- or double-sided.";
 
   if (!isQuantity(d.quantity)) return `Enter a quantity from 1 to ${LIMITS.quantity}.`;

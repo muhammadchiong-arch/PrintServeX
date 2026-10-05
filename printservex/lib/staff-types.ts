@@ -12,7 +12,8 @@ export type InventoryMove = {
 // What an inventory item is used for, so starting a print can take it from stock (011_inventory_links.sql)
 export type InventoryLink =
   | { kind: "paper"; sizeId: string; typeId: string } // a paper size + paper type
-  | { kind: "lamination"; size: "id" | "short" | "a4" | "legal" }; // a lamination film size
+  | { kind: "lamination"; size: "id" | "short" | "a4" | "legal" } // a lamination film size
+  | { kind: "photo"; size: string }; // photo paper for one Photo Printing size (013_photo_print_sizes.sql)
 
 export type InventoryItem = {
   id: string;

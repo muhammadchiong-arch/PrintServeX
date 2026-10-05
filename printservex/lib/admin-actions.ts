@@ -68,6 +68,13 @@ export async function saveLaminationPrices(prices: Record<LaminationSize, number
   return adminRpc("admin_save_lamination_sizes", { p_prices: clean });
 }
 
+// One Photo Printing size: its price per print (null = "price to be confirmed by staff") and whether it's offered
+export async function savePhotoSize(key: string, price: number | null, active: boolean): Promise<ActionResult> {
+  if (typeof key !== "string" || !/^[a-z0-9-]{1,20}$/.test(key) || typeof active !== "boolean") return FAILED;
+  if (price !== null && (typeof price !== "number" || !Number.isFinite(price))) return FAILED;
+  return adminRpc("admin_save_photo_size", { p_key: key, p_price: price === null ? null : Math.round(price * 100) / 100, p_active: active });
+}
+
 // A service's price per unit (null = "price to be confirmed by staff") and whether it's offered
 export async function saveService(id: string, unitPrice: number | null, active: boolean): Promise<ActionResult> {
   if (!UUID.test(id) || typeof active !== "boolean") return FAILED;

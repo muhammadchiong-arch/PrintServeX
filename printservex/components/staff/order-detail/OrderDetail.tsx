@@ -529,6 +529,13 @@ function ItemCard({ item: i, orderRef, position }: { item: OrderItem; orderRef: 
       case "photo": {
         const lam = laminationLine(i);
         return [
+          // Photo Printing: the photo size to print (saved with the order) and its price per print
+          ...(d.photoSizeName
+            ? ([
+                ["Photo size", d.photoSizeName.replace(" (", " — ").replace(/\)$/, "")],
+                ["Price each", d.photoRate !== undefined ? formatPeso(d.photoRate) : "To be confirmed"],
+              ] as [string, string][])
+            : []),
           ["Background", d.background ? BACKGROUND_LABELS[d.background] : "—"],
           ["Quantity", String(i.quantity)],
           ...(lam ? [["Lamination", `${lam.size} · ${lam.quantity} × ${formatPeso(lam.unitPrice)} = ${formatPeso(lam.subtotal)}`] as [string, string]] : []),
