@@ -110,6 +110,7 @@ export function describeItem(i: OrderItem): string {
       parts = [
         d.sizeName,
         i.kind === "school_business" && (d.color ? "Color" : "B&W"),
+        i.kind === "photo" && d.photoSizeName,
         d.background && BACKGROUND_LABELS[d.background],
         i.kind === "photo" && i.lamination && laminationLabel(i),
         i.kind === "design" && (d.mode === "file" ? "Own file" : "Design service"),

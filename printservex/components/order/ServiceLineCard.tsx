@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CircleAlert, FileText, ImageIcon, Paperclip, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/Textarea";
 import { cn } from "@/lib/cn";
 import { formatFileSize, isImage } from "@/lib/files";
 import { formatPeso } from "@/lib/format";
-import { isLaminationSize, LAMINATION_LABELS, laminationRate, type AddOns, type LinePrice } from "@/lib/price";
+import { photoWarnings } from "@/lib/photo-quality";
+import { isLaminationSize, LAMINATION_LABELS, laminationRate, photoSizeText, type AddOns, type LinePrice } from "@/lib/price";
 import { areaSqFt, BACKGROUND_LABELS, fileTypesText, LIMITS, multiFile, type LineDetails, type Service } from "@/lib/services";
 import type { Catalog, OrderLine } from "./types";
 
@@ -69,6 +70,32 @@ export function ServiceLineCard({ line, service, catalog, price, addOns, problem
     ...(addOns.lamination?.sizes ?? []).map((s) => ({ value: s.id, label: `${s.label} · +${formatPeso(s.price)} each` })),
   ];
 
+  // Photo Printing: the photo size (not a paper size) and print-quality hints for the uploaded photo
+  const sized = service.defaults.printSizes === true;
+  const photoSize = sized ? catalog.photoSizes.find((p) => p.key === d.photoSize) : undefined;
+  const photoSizeOptions = [
+    { value: "", label: "Choose a size" },
+    ...catalog.photoSizes.map((p) => ({
+      value: p.key,
+      label: `${p.label} · ${p.widthIn} × ${p.heightIn} in · ${p.price === null ? "price to be confirmed" : `${formatPeso(p.price)} each`}`,
+    })),
+  ];
+  const [pixels, setPixels] = useState<{ width: number; height: number } | null>(null);
+  useEffect(() => {
+    if (!sized || !line.file || !isImage(line.file.name)) return;
+    let current = true;
+    createImageBitmap(line.file)
+      .then((bitmap) => {
+        if (current) setPixels({ width: bitmap.width, height: bitmap.height });
+        bitmap.close();
+      })
+      .catch(() => {}); // can't read it here: no hint, staff still check the file
+    return () => {
+      current = false;
+    };
+  }, [sized, line.file]);
+  const warnings = photoSize && pixels ? photoWarnings(pixels, photoSize) : null;
+
   const quantity = (label = "Quantity") => (
     <NumberField label={label} value={d.quantity} min={1} max={LIMITS.quantity} onValue={(quantity) => onDetails({ quantity })} />
   );
@@ -125,6 +152,14 @@ export function ServiceLineCard({ line, service, catalog, price, addOns, problem
               { value: "bw", label: "B&W" },
               { value: "color", label: "Color" },
             ]}
+          />
+        )}
+        {sized && (
+          <Select
+            label="Photo size"
+            value={d.photoSize ?? ""}
+            onChange={(e) => onDetails({ photoSize: e.target.value || undefined })}
+            options={photoSizeOptions}
           />
         )}
         {service.kind === "photo" && (
@@ -237,6 +272,19 @@ export function ServiceLineCard({ line, service, catalog, price, addOns, problem
         <p role="alert" className="flex gap-2 rounded-lg bg-cancelled-tint p-3 text-sm text-cancelled">
           <CircleAlert size={20} aria-hidden className="shrink-0" />
           {problem}
+        </p>
+      )}
+      {/* Photo Printing hints: never block, staff decide */}
+      {warnings?.lowResolution && pixels && photoSize && (
+        <p className="text-xs text-slate">
+          This photo is {pixels.width} × {pixels.height} px. For {photoSizeText(photoSize)} at least {warnings.lowResolution.minLong} ×{" "}
+          {warnings.lowResolution.minShort} px is recommended, or the print may look blurry. You can still continue.
+        </p>
+      )}
+      {warnings?.shapeMismatch && photoSize && (
+        <p className="text-xs text-slate">
+          Your photo&apos;s shape doesn&apos;t match {photoSizeText(photoSize)}. Staff will fit it without stretching, so some edges may be
+          cropped.
         </p>
       )}
       {lamination && (

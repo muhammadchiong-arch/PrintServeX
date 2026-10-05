@@ -4,6 +4,7 @@
 // Anyone can call them with a hand-made request, so every input is checked again here.
 
 import { randomUUID } from "node:crypto";
+import { matchesExtension } from "@/lib/file-signature";
 import { checkFileMeta, formatFileSize } from "@/lib/files";
 import { normalizePhone, validateDetails } from "@/lib/order-details";
 import {
@@ -13,7 +14,7 @@ import {
   type PrepareUploadsResult,
 } from "@/lib/order-input";
 import type { Order, OrderItem } from "@/lib/orders";
-import { priceLine } from "@/lib/price";
+import { photoSizeText, priceLine } from "@/lib/price";
 import { getPricingData, toPrices } from "@/lib/pricing-data";
 import { checkLineDetails } from "@/lib/services";
 import { getCurrentStaff } from "@/lib/staff-session";
@@ -71,6 +72,24 @@ export async function prepareUploads(raw: unknown): Promise<PrepareUploadsResult
  *   services without a price are saved as "to be confirmed" (line_total null)
  * - the reference number comes from the database (numbered per day)
  */
+// The first 1024 bytes of an uploaded file (to check its real type), or null if it can't be read.
+// Only those bytes are downloaded, with a short-lived link made by the server.
+async function firstBytes(path: string): Promise<Uint8Array | null> {
+  const { data, error } = await supabaseAdmin.storage.from(ORDER_FILES_BUCKET).createSignedUrl(path, 60);
+  if (error || !data) {
+    console.error("placeOrder: signed link for type check failed", error?.message);
+    return null;
+  }
+  try {
+    const res = await fetch(data.signedUrl, { headers: { Range: "bytes=0-1023" }, cache: "no-store" });
+    if (!res.ok) return null;
+    return new Uint8Array(await res.arrayBuffer()).slice(0, 1024);
+  } catch (e) {
+    console.error("placeOrder: reading the file start failed", e);
+    return null;
+  }
+}
+
 export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
   const input = parsePlaceOrderInput(raw);
   const withFiles = input?.items.filter((i) => i.path !== null) ?? [];
@@ -118,6 +137,12 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
       }
       const fileProblem = checkFileMeta(item.fileName, bytes, service);
       if (fileProblem) return { ok: false, error: fileProblem };
+      // The name says JPG / PNG / PDF / DOCX: check the file's first bytes really are that type
+      const first = await firstBytes(item.path);
+      if (!first) return { ok: false, error: TRY_AGAIN };
+      if (!matchesExtension(item.fileName, first)) {
+        return { ok: false, error: `${item.fileName} isn't a real ${item.fileName.split(".").pop()?.toUpperCase()} file. Please upload the original file.` };
+      }
     }
 
     // Document Printing needs its print options; the other services don't take them
@@ -156,6 +181,17 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
     if (doc) {
       details.sizeId = options.sizeId;
       details.typeId = options.typeId;
+    }
+    // Photo Printing: keep the photo size name and its price per print with the order
+    delete details.photoSizeName;
+    delete details.photoRate;
+    if (service.defaults.printSizes) {
+      const size = prices.photoSizes.find((p) => p.key === details.photoSize);
+      if (!size) return { ok: false, error: TRY_AGAIN }; // priceLine already refused this
+      details.photoSizeName = photoSizeText(size);
+      if (size.price !== null) details.photoRate = size.price;
+    } else {
+      delete details.photoSize;
     }
     const quantity = service.kind === "document" ? options.copies : (details.quantity ?? 1);
 

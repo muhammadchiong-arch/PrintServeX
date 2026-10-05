@@ -17,7 +17,7 @@ import { ReviewStep } from "./ReviewStep";
 import { ServiceStep } from "./ServiceStep";
 import { findService, lineInput, STEPS, type Catalog, type OrderLine } from "./types";
 
-type OrderWizardProps = Catalog & {
+type OrderWizardProps = Omit<Catalog, "photoSizes"> & {
   prices: Prices;
   // "customer" = full-page form at /order · "staff" = Walk-in order inside the staff portal
   variant: "customer" | "staff";
@@ -34,7 +34,10 @@ const MAX_LINES = UPLOAD_RULES.maxFilesPerOrder;
  * Steps: 0 = Your details, 1 = Service, 2 = Files & options, 3 = Review.
  */
 export function OrderWizard({ sizes, types, categories, services, prices, variant, onSubmit }: OrderWizardProps) {
-  const catalog = useMemo(() => ({ sizes, types, categories, services }), [sizes, types, categories, services]);
+  const catalog = useMemo(
+    () => ({ sizes, types, categories, services, photoSizes: prices.photoSizes }),
+    [sizes, types, categories, services, prices.photoSizes],
+  );
   const isStaff = variant === "staff";
   // Business rule: customers must accept the privacy notice; staff ask walk-in customers in person
   const rulesOpt = { requireConsent: !isStaff };

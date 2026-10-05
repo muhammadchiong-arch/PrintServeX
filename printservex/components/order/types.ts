@@ -1,5 +1,5 @@
 import { formatPeso } from "@/lib/format";
-import { LAMINATION_LABELS, type LineInput, type PrintOptions } from "@/lib/price";
+import { LAMINATION_LABELS, photoSizeText, type LineInput, type PhotoSize, type PrintOptions } from "@/lib/price";
 import type { PaperSize, PaperType } from "@/lib/pricing-data";
 import { areaSqFt, BACKGROUND_LABELS, type LineDetails, type Service, type ServiceCategory } from "@/lib/services";
 
@@ -17,7 +17,8 @@ export type OrderLine = {
   details: LineDetails;
 };
 
-export type Catalog = { sizes: PaperSize[]; types: PaperType[]; categories: ServiceCategory[]; services: Service[] };
+// photoSizes: the Photo Printing sizes (Wallet, 3R, 4R…), active ones only
+export type Catalog = { sizes: PaperSize[]; types: PaperType[]; categories: ServiceCategory[]; services: Service[]; photoSizes: PhotoSize[] };
 
 export const STEPS = ["Your details", "Service", "Files & options", "Review"] as const;
 
@@ -38,7 +39,7 @@ export function describeOptions(o: PrintOptions, catalog: Pick<Catalog, "sizes" 
 }
 
 // A short summary of one line's options, for the summary and review
-export function describeLine(line: OrderLine, service: Service, catalog: Pick<Catalog, "sizes" | "types">): string {
+export function describeLine(line: OrderLine, service: Service, catalog: Pick<Catalog, "sizes" | "types" | "photoSizes">): string {
   const d = line.details;
   const size = catalog.sizes.find((s) => s.id === d.sizeId)?.name;
   const parts: (string | undefined | false)[] = (() => {
@@ -47,8 +48,10 @@ export function describeLine(line: OrderLine, service: Service, catalog: Pick<Ca
         return [describeOptions(line.options, catalog), d.sides === "double" && "Double-sided"];
       case "finishing":
         return [size, `× ${d.quantity}`];
-      case "photo":
-        return [d.background && BACKGROUND_LABELS[d.background], d.laminationSize && `Lamination ${LAMINATION_LABELS[d.laminationSize]}`, `× ${d.quantity}`];
+      case "photo": {
+        const photoSize = catalog.photoSizes.find((p) => p.key === d.photoSize);
+        return [photoSize && photoSizeText(photoSize), d.background && BACKGROUND_LABELS[d.background], d.laminationSize && `Lamination ${LAMINATION_LABELS[d.laminationSize]}`, `× ${d.quantity}`];
+      }
       case "design":
         return [d.mode === "design" ? "Design it for me" : "Using my file", d.sizeText, `× ${d.quantity}`];
       case "large_format": {
@@ -65,7 +68,12 @@ export function describeLine(line: OrderLine, service: Service, catalog: Pick<Ca
 }
 
 // "₱45.00 per set", or "Price confirmed by staff" when the owner hasn't set a price
-export function servicePriceText(service: Service, minPagePrice: number | null): string {
+export function servicePriceText(service: Service, minPagePrice: number | null, photoSizes: PhotoSize[] = []): string {
   if (service.kind === "document") return minPagePrice !== null ? `From ${formatPeso(minPagePrice)} per page` : "Priced per page";
+  // Photo Printing: priced by photo size
+  if (service.defaults.printSizes) {
+    const priced = photoSizes.flatMap((p) => (p.price === null ? [] : [p.price]));
+    return priced.length > 0 ? `From ${formatPeso(Math.min(...priced))} per print` : "Price confirmed by staff";
+  }
   return service.unitPrice !== null ? `${formatPeso(service.unitPrice)} ${service.unitLabel}` : "Price confirmed by staff";
 }

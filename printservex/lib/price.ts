@@ -47,8 +47,14 @@ export function laminationRange(addOns: AddOns): { min: number; max: number } | 
 // One lamination charge: the size, ₱ per piece, how many pieces, and the amount
 export type LaminationCharge = { size: LaminationSize; rate: number; quantity: number; amount: number };
 
-// Everything needed to price an order (services carry their own unit price)
-export type Prices = { rules: PriceRule[]; addOns: AddOns };
+// One Photo Printing size (photo_print_sizes table). price null = "Price to be confirmed" by staff.
+export type PhotoSize = { key: string; label: string; widthIn: number; heightIn: number; price: number | null };
+
+// "4R (4 × 6 in)"
+export const photoSizeText = (s: Pick<PhotoSize, "label" | "widthIn" | "heightIn">) => `${s.label} (${s.widthIn} × ${s.heightIn} in)`;
+
+// Everything needed to price an order (services carry their own unit price; Photo Printing is priced per size)
+export type Prices = { rules: PriceRule[]; addOns: AddOns; photoSizes: PhotoSize[] };
 
 // The options a customer picks for one file
 export type PrintOptions = {
@@ -119,6 +125,8 @@ export type LinePrice =
  * - Large-Format: unit price × square feet × quantity.
  * - Every other service: unit price × quantity.
  * - Photo & ID: optional lamination = lamination size price × quantity.
+ * - Photo Printing: the chosen photo size's price × quantity (instead of the service price).
+ *   A size without a price is "quote" (staff confirm it).
  * - A service without a unit price is "quote": staff confirm it, it isn't added to the estimate.
  *   Its lamination still has a known price, so that part IS added to the estimate.
  * Returns null if the line isn't valid yet (missing options, combination not offered).
@@ -141,7 +149,12 @@ export function priceLine(prices: Prices, line: LineInput, sizeIds: string[]): L
     if (rate === null) return null; // that lamination size isn't offered anymore
     lamination = { size: line.details.laminationSize, rate, quantity, amount: centavos(rate * quantity) };
   }
-  const unit = line.service.unitPrice;
+  let unit = line.service.unitPrice;
+  if (line.service.defaults.printSizes) {
+    const size = prices.photoSizes.find((s) => s.key === line.details.photoSize);
+    if (!size) return null; // no size chosen, or that size isn't offered anymore
+    unit = size.price;
+  }
   if (unit === null) return { status: "quote", lamination };
   const area = line.service.kind === "large_format" ? (areaSqFt(line.details) ?? 0) : 1;
   return { status: "priced", total: centavos(unit * area * quantity + (lamination?.amount ?? 0)), file: null, lamination };

@@ -41,6 +41,12 @@ export function materialNeeds(order: Order, inventory: InventoryItem[]): Materia
       const item = inventory.find((x) => x.link?.kind === "lamination" && x.link.size === size) ?? null;
       add(`lam:${size}`, `Lamination film ${LAMINATION_LABELS[size]}`, i.kind === "document" ? sheetsOf(i) : i.quantity, item);
     }
+    // Photo paper: Photo Printing, 1 sheet per print (photoSize is only saved for Photo Printing)
+    if (i.kind === "photo" && d.photoSize) {
+      const size = d.photoSize;
+      const item = inventory.find((x) => x.link?.kind === "photo" && x.link.size === size) ?? null;
+      add(`photo:${size}`, `Photo paper ${d.photoSizeName ?? size}`, i.quantity, item);
+    }
   }
 
   return [...needs.values()].map((n) => ({ ...n, state: !n.item ? "untracked" : n.item.qty >= n.need ? "ok" : "short" }));

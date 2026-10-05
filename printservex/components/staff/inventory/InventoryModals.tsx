@@ -78,8 +78,8 @@ export function StockModal({ action, onClose }: { action: StockAction; onClose: 
   );
 }
 
-type UsedFor = "none" | "paper" | "lamination";
-type ItemForm = { name: string; unit: string; qty: string; reorder: string; usedFor: UsedFor; sizeId: string; typeId: string; lamination: string };
+type UsedFor = "none" | "paper" | "lamination" | "photo";
+type ItemForm = { name: string; unit: string; qty: string; reorder: string; usedFor: UsedFor; sizeId: string; typeId: string; lamination: string; photoSize: string };
 
 const LAMINATION_OPTIONS = LAMINATION_SIZE_IDS.map((id) => ({ value: id, label: LAMINATION_LABELS[id] }));
 
@@ -94,6 +94,7 @@ function formOf(item: InventoryItem | null): ItemForm {
     sizeId: link?.kind === "paper" ? link.sizeId : "",
     typeId: link?.kind === "paper" ? link.typeId : "",
     lamination: link?.kind === "lamination" ? link.size : "",
+    photoSize: link?.kind === "photo" ? link.size : "",
   };
 }
 
@@ -111,7 +112,9 @@ export function ItemModal({ open, item, onClose }: { open: boolean; item: Invent
       ? { kind: "paper", sizeId: f.sizeId, typeId: f.typeId }
       : f.usedFor === "lamination" && isLaminationSize(f.lamination)
         ? { kind: "lamination", size: f.lamination }
-        : null;
+        : f.usedFor === "photo" && f.photoSize
+          ? { kind: "photo", size: f.photoSize }
+          : null;
   const errors = {
     name: f.name.trim() ? undefined : "Enter the item name.",
     unit: f.unit.trim() ? undefined : "Enter a unit, e.g. ream or bottle.",
@@ -174,6 +177,7 @@ export function ItemModal({ open, item, onClose }: { open: boolean; item: Invent
           { value: "none", label: "Not linked (counted by hand only)" },
           { value: "paper", label: "Paper for printing" },
           { value: "lamination", label: "Lamination film" },
+          ...(paper.photoSizes.length > 0 ? [{ value: "photo", label: "Photo paper (Photo Printing)" }] : []),
         ]}
         hint={f.usedFor === "none" ? undefined : "Starting a print takes this item from stock, and is blocked when there isn't enough."}
       />
@@ -196,6 +200,17 @@ export function ItemModal({ open, item, onClose }: { open: boolean; item: Invent
             error={tried && !f.typeId ? errors.link : undefined}
           />
         </div>
+      )}
+      {f.usedFor === "photo" && (
+        <Select
+          size="md"
+          label="Photo size"
+          value={f.photoSize}
+          onChange={(e) => setF({ ...f, photoSize: e.target.value })}
+          options={[{ value: "", label: "Choose" }, ...paper.photoSizes.map((p) => ({ value: p.key, label: p.name }))]}
+          hint="1 sheet is taken per print."
+          error={tried ? errors.link : undefined}
+        />
       )}
       {f.usedFor === "lamination" && (
         <Select

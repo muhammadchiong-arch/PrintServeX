@@ -8,7 +8,7 @@ import type { Catalog } from "./types";
 
 // C2 for customers: on submit, upload the files, save the order on the server,
 // then open the confirmation page (C3)
-export function CustomerOrderForm(props: Catalog & { prices: Prices }) {
+export function CustomerOrderForm(props: Omit<Catalog, "photoSizes"> & { prices: Prices }) {
   const router = useRouter();
   return (
     <OrderWizard

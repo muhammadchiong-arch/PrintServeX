@@ -9,6 +9,7 @@ import {
   type AddOnKey,
   type AddOns,
   type LaminationPrice,
+  type PhotoSize,
   type PriceRule,
   type Prices,
 } from "@/lib/price";
@@ -35,6 +36,7 @@ export type PricingData = {
   rules: PriceRule[]; // active rules only
   addOnList: AddOnRow[];
   laminationPrices: LaminationPrice[]; // ₱ per lamination size, always ID, Short, A4, Legal
+  photoSizes: (PhotoSize & { active: boolean })[]; // Photo Printing sizes (013), in display order
   categories: ServiceCategory[]; // in display order
   services: Service[]; // in display order (supabase/009_services.sql)
 };
@@ -61,7 +63,13 @@ export function toPrices(data: PricingData): Prices {
   };
   const lamination = pick("lamination");
   const addOns: AddOns = { binding: pick("binding"), lamination: lamination && { ...lamination, sizes: data.laminationPrices } };
-  return { rules: data.rules, addOns };
+  return {
+    rules: data.rules,
+    addOns,
+    photoSizes: data.photoSizes
+      .filter((p) => p.active)
+      .map((p) => ({ key: p.key, label: p.label, widthIn: p.widthIn, heightIn: p.heightIn, price: p.price })),
+  };
 }
 
 /**
@@ -76,7 +84,7 @@ export async function readPricing(client: SupabaseClient, { all = false } = {}):
     const q = client.from(table).select("*");
     return all ? q : q.eq("is_active", true);
   };
-  const [sizes, types, rules, addOns, categories, services, laminationSizes] = await Promise.all([
+  const [sizes, types, rules, addOns, categories, services, laminationSizes, photoSizes] = await Promise.all([
     read("paper_sizes").order("created_at"),
     read("paper_types").order("created_at"),
     client.from("price_rules").select("*").eq("is_active", true),
@@ -84,6 +92,7 @@ export async function readPricing(client: SupabaseClient, { all = false } = {}):
     read("service_categories").order("sort"),
     read("services").order("sort"),
     client.from("lamination_sizes").select("key, price"),
+    read("photo_print_sizes").order("sort"),
   ]);
 
   const failed = [sizes, types, rules, addOns].find((r) => r.error);
@@ -97,6 +106,8 @@ export async function readPricing(client: SupabaseClient, { all = false } = {}):
   if (catalogError) console.error("Service catalog failed to load (run supabase/009_services.sql?)", catalogError.message);
   // Lamination prices per size (010_lamination_sizes.sql). Until it is run, the default prices are used.
   if (laminationSizes.error) console.error("Lamination prices failed to load (run supabase/010_lamination_sizes.sql?)", laminationSizes.error.message);
+  // Photo Printing sizes (013_photo_print_sizes.sql). Until it is run, Photo Printing can't be ordered.
+  if (photoSizes.error) console.error("Photo sizes failed to load (run supabase/013_photo_print_sizes.sql?)", photoSizes.error.message);
   const savedLamination = new Map<string, number>();
   for (const row of (laminationSizes.error ? [] : (laminationSizes.data ?? [])) as DbRow[]) {
     const key = text(row, "key");
@@ -105,6 +116,14 @@ export async function readPricing(client: SupabaseClient, { all = false } = {}):
   }
 
   return {
+    photoSizes: ((photoSizes.error ? [] : (photoSizes.data ?? [])) as DbRow[]).flatMap((p) => {
+      const key = text(p, "key");
+      const label = text(p, "label");
+      const widthIn = num(p, "width_in");
+      const heightIn = num(p, "height_in");
+      if (!key || !label || widthIn === null || heightIn === null) return [];
+      return [{ key, label, widthIn, heightIn, price: num(p, "price"), active: active(p) }];
+    }),
     laminationPrices: LAMINATION_SIZE_IDS.map((id) => ({
       id,
       label: LAMINATION_LABELS[id],
@@ -149,7 +168,7 @@ export async function readPricing(client: SupabaseClient, { all = false } = {}):
       const kind = text(v, "kind") as ServiceKind | null;
       const fileRule = text(v, "file_rule") as FileRule | null;
       if (!id || !name || !categoryKey || !kind || !SERVICE_KINDS.includes(kind) || !fileRule) return [];
-      const defaults = v.defaults && typeof v.defaults === "object" ? (v.defaults as { color?: unknown }) : {};
+      const defaults = v.defaults && typeof v.defaults === "object" ? (v.defaults as { color?: unknown; printSizes?: unknown }) : {};
       return [
         {
           id,
@@ -161,7 +180,7 @@ export async function readPricing(client: SupabaseClient, { all = false } = {}):
           unitLabel: text(v, "unit_label") ?? "per piece",
           fileTypes: Array.isArray(v.file_types) ? v.file_types.filter((t): t is string => typeof t === "string") : [],
           fileRule,
-          defaults: { color: defaults.color === true ? true : undefined },
+          defaults: { color: defaults.color === true ? true : undefined, printSizes: defaults.printSizes === true ? true : undefined },
           active: active(v),
         },
       ];

@@ -83,7 +83,16 @@ export function PriceSummary({ chosen, lines, catalog, totals, prices, primary, 
                         ` · lamination ${p.file.laminationSheets} × ${formatPeso(p.file.laminationRate)} = ${formatPeso(p.file.lamination)}`}
                     </span>
                   )}
-                  {p?.status === "priced" && !p.file && service.unitPrice !== null && (
+                  {p?.status === "priced" && !p.file && service.defaults.printSizes && (
+                    // Photo Printing: the chosen photo size's price
+                    <span className="text-xs text-slate">
+                      {(() => {
+                        const size = catalog.photoSizes.find((x) => x.key === l.details.photoSize);
+                        return size && size.price !== null ? `${size.label} · ${formatPeso(size.price)} each × ${l.details.quantity}` : "";
+                      })()}
+                    </span>
+                  )}
+                  {p?.status === "priced" && !p.file && !service.defaults.printSizes && service.unitPrice !== null && (
                     <span className="text-xs text-slate">
                       {formatPeso(service.unitPrice)} {service.unitLabel} × {l.details.quantity}
                     </span>
