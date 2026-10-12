@@ -33,6 +33,10 @@ export function PriceSummary({ chosen, lines, catalog, totals, prices, primary, 
   const size = compact ? "md" : "lg";
   const sizeIds = catalog.sizes.map((s) => s.id);
   const note = quoteNote(totals.quoteCount);
+  // Documents only (photos and other services have quantities, not pages)
+  const documents = lines.filter((l) => l.status === "ready" && catalog.services.find((s) => s.id === l.serviceId)?.kind === "document");
+  const documentPages = documents.reduce((sum, l) => sum + l.options.pages, 0);
+  const toCheck = documents.filter((l) => l.pageStatus !== "detected").length;
 
   return (
     <aside
@@ -110,6 +114,15 @@ export function PriceSummary({ chosen, lines, catalog, totals, prices, primary, 
         );
       })}
 
+      {documents.length > 0 && (
+        <div className={`${row} border-t border-border pt-3 text-slate`}>
+          <span>
+            {documents.length} {documents.length === 1 ? "document" : "documents"} · {documentPages} {documentPages === 1 ? "page" : "pages"}
+          </span>
+          {toCheck > 0 && <span className="text-xs">{toCheck} to be checked by staff</span>}
+        </div>
+      )}
+
       <div className="flex items-baseline justify-between border-t border-border pt-3">
         <span className="font-semibold">Estimated total</span>
         <span className="tabular font-heading text-2xl font-semibold" aria-live="polite">
@@ -117,7 +130,7 @@ export function PriceSummary({ chosen, lines, catalog, totals, prices, primary, 
         </span>
       </div>
       {note && <p className="-mt-2 text-right text-xs font-medium text-slate">{note}</p>}
-      <p className="text-xs text-slate">{compact ? "Estimate. Confirm the final price after checking the order." : "Staff confirm the final price. You pay at pickup."}</p>
+      <p className="text-xs text-slate">{compact ? "Estimate. Confirm the final price after checking the order." : "Staff confirm the final price, for example when a page count can't be verified."}</p>
 
       <Button size={size} onClick={primary.onClick} disabled={primary.disabled}>
         {primary.label}

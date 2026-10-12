@@ -23,6 +23,7 @@ type PaymentStepProps = {
   choice: PaymentChoice;
   total: number; // the same estimated total as the price summary
   quoteCount: number; // lines whose price staff confirm later
+  reviewCount: number; // documents whose page count staff check
   walkIn: boolean; // staff entering a walk-in: the receipt is optional (they see the customer's phone)
   showProblems: boolean; // after "Continue to review" was pressed
   problem: string | null; // what still blocks Review (lib/payments.ts paymentProblem)
@@ -34,8 +35,8 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 );
 
 // Step 4: how the customer pays. Nothing is charged here; GCash is checked by staff later.
-export function PaymentStep({ settings, choice, total, quoteCount, walkIn, showProblems, problem, onChange }: PaymentStepProps) {
-  const gcashOff = gcashUnavailable(settings, quoteCount, total);
+export function PaymentStep({ settings, choice, total, quoteCount, reviewCount, walkIn, showProblems, problem, onChange }: PaymentStepProps) {
+  const gcashOff = gcashUnavailable(settings, quoteCount, total, reviewCount);
   const refError = choice.method === "gcash" && showProblems ? checkGcashRef(choice.reference) : null;
   const receiptError = choice.receipt ? checkReceipt(choice.receipt) : null;
   const receiptMissing = showProblems && !choice.receipt && settings.receiptRequired && !walkIn;

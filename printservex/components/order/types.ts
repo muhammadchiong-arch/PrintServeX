@@ -1,6 +1,7 @@
 import { formatPeso } from "@/lib/format";
 import { LAMINATION_LABELS, photoSizeText, type LineInput, type PhotoSize, type PrintOptions } from "@/lib/price";
 import type { PaperSize, PaperType } from "@/lib/pricing-data";
+import type { PageNote, PageStatus } from "@/lib/page-count";
 import { areaSqFt, BACKGROUND_LABELS, type LineDetails, type Service, type ServiceCategory } from "@/lib/services";
 
 // One line of the order, kept in the browser until it is submitted.
@@ -13,6 +14,10 @@ export type OrderLine = {
   status: "reading" | "ready"; // "reading" while we count a document's pages
   progress: number; // 0–100
   pagesDetected: number | null; // null = we couldn't count, customer types it
+  // How the page count was found (lib/page-count.ts). The server counts again; anything but "detected"
+  // is checked by staff, and such an order can't be paid by GCash.
+  pageStatus: PageStatus | null;
+  pageNote?: PageNote;
   options: PrintOptions; // used by Document Printing
   details: LineDetails;
 };

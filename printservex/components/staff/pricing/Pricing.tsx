@@ -42,8 +42,12 @@ export function Pricing({ data }: { data: PricingData }) {
   const activeTypes = data.types.filter((t) => t.active);
   const blank: OptionDraft = { name: "", dimensions: "", price: "", unit: "" };
   // Business rule: lamination is priced by its size (ID, Short, A4, Legal), set here by the admin
-  const laminationText = `${data.laminationPrices.map((l) => `${l.label} ${formatPeso(l.price)}`).join(" · ")} per sheet`;
-  const laminationDraft = Object.fromEntries(data.laminationPrices.map((l) => [l.id, l.price.toFixed(2)])) as Record<LaminationSize, string>;
+  const laminationText =
+    data.laminationPrices.length > 0 ? `${data.laminationPrices.map((l) => `${l.label} ${formatPeso(l.price)}`).join(" · ")} per sheet` : "No sizes priced yet";
+  // Every size gets a box; a size with no saved price starts empty
+  const laminationDraft = Object.fromEntries(
+    LAMINATION_SIZE_IDS.map((id) => [id, data.laminationPrices.find((l) => l.id === id)?.price.toFixed(2) ?? ""]),
+  ) as Record<LaminationSize, string>;
   const rows: Record<OptionKind, Row[]> = {
     sizes: data.sizes.map((s) => ({ id: s.id, name: s.name, detail: s.dimensions || "—", archived: !s.active, draft: { ...blank, name: s.name, dimensions: s.dimensions } })),
     papers: data.types.map((t) => ({

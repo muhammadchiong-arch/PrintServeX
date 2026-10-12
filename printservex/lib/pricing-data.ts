@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import {
-  DEFAULT_LAMINATION_PRICES,
   isLaminationSize,
   LAMINATION_LABELS,
   LAMINATION_SIZE_IDS,
@@ -35,7 +34,7 @@ export type PricingData = {
   types: PaperType[];
   rules: PriceRule[]; // active rules only
   addOnList: AddOnRow[];
-  laminationPrices: LaminationPrice[]; // ₱ per lamination size, always ID, Short, A4, Legal
+  laminationPrices: LaminationPrice[]; // ₱ per lamination size set by the admin (a size with no price isn't offered)
   photoSizes: (PhotoSize & { active: boolean })[]; // Photo Printing sizes (013), in display order
   categories: ServiceCategory[]; // in display order
   services: Service[]; // in display order (supabase/009_services.sql)
@@ -124,11 +123,11 @@ export async function readPricing(client: SupabaseClient, { all = false } = {}):
       if (!key || !label || widthIn === null || heightIn === null) return [];
       return [{ key, label, widthIn, heightIn, price: num(p, "price"), active: active(p) }];
     }),
-    laminationPrices: LAMINATION_SIZE_IDS.map((id) => ({
-      id,
-      label: LAMINATION_LABELS[id],
-      price: savedLamination.get(id) ?? DEFAULT_LAMINATION_PRICES[id],
-    })),
+    // No made-up prices: a size without a saved price (e.g. 010 not run) isn't offered to customers
+    laminationPrices: LAMINATION_SIZE_IDS.flatMap((id) => {
+      const price = savedLamination.get(id);
+      return price === undefined ? [] : [{ id, label: LAMINATION_LABELS[id], price }];
+    }),
     sizes: ((sizes.data ?? []) as DbRow[]).flatMap((s) => {
       const id = text(s, "id");
       const name = text(s, COLUMNS.sizeName);

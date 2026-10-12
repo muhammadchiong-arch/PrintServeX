@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/Select";
 import { ToggleChip } from "@/components/ui/ToggleChip";
 import { formatFileSize, isImage } from "@/lib/files";
 import { formatPeso } from "@/lib/format";
+import { PAGE_NOTES } from "@/lib/page-count";
 import { isLaminationSize, laminationRange, type AddOns, type FilePrice, type PrintOptions } from "@/lib/price";
 import type { LineDetails } from "@/lib/services";
 import type { Catalog, OrderLine } from "./types";
@@ -41,7 +42,21 @@ export function FileCard({ item, price, addOns, catalog, onChange, onDetails, on
     { value: "", label: "Choose a size" },
     ...(addOns.lamination?.sizes ?? []).map((s) => ({ value: s.id, label: `${s.label} · ${formatPeso(s.price)}/sheet` })),
   ];
-  const pagesText = item.pagesDetected ? `${item.pagesDetected} ${item.pagesDetected === 1 ? "page" : "pages"}` : "Pages not counted";
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  // How the page count was found. Only a count read from the file is exact; staff check the others.
+  const counted = item.pagesDetected !== null;
+  const pagesText =
+    item.pageStatus === "detected" && counted
+      ? plural(o.pages, "page")
+      : item.pageStatus === "estimated" && counted
+        ? `About ${plural(o.pages, "page")} (estimated)`
+        : item.pageNote
+          ? PAGE_NOTES[item.pageNote]
+          : "Pages not counted";
+  // Printed pages (what is charged per page) and physical sheets (paper used) are not the same thing
+  const double = item.details.sides === "double";
+  const printed = o.pages * o.copies;
+  const sheets = Math.ceil(o.pages / (double ? 2 : 1)) * o.copies;
 
   return (
     <article aria-label={item.file.name} className="flex flex-col gap-4 rounded-xl bg-surface p-4 shadow-card lg:gap-5 lg:p-6">
@@ -97,15 +112,17 @@ export function FileCard({ item, price, addOns, catalog, onChange, onDetails, on
           inputMode="numeric"
           min={1}
           max={MAX_PAGES}
-          value={pagesInput}
+          value={counted ? String(o.pages) : pagesInput}
           onChange={(e) => {
             setPagesInput(e.target.value);
             const n = Number(e.target.value);
             if (Number.isInteger(n) && n >= 1 && n <= MAX_PAGES) onChange({ pages: n });
           }}
           onBlur={() => setPagesInput(String(o.pages))}
-          error={pagesValid ? undefined : `Enter 1 to ${MAX_PAGES}.`}
-          hint={item.pagesDetected ? undefined : "Type the page count."}
+          // Counted from the file: the server counts it again, so it can't be changed here
+          readOnly={counted}
+          error={counted || pagesValid ? undefined : `Enter 1 to ${MAX_PAGES}.`}
+          hint={counted ? (item.pageStatus === "estimated" ? "From Word. Staff check it." : "Counted from the file.") : "Type the page count."}
         />
         <NumberStepper label="Copies" value={o.copies} onChange={(copies) => onChange({ copies })} />
       </div>
@@ -150,6 +167,19 @@ export function FileCard({ item, price, addOns, catalog, onChange, onDetails, on
         </div>
       )}
       </div>
+
+      <p className="text-xs text-slate">
+        {plural(o.pages, "page")} × {o.copies} {o.copies === 1 ? "copy" : "copies"} = {plural(printed, "printed page")} · {plural(sheets, "sheet")} of paper
+        ({double ? "double-sided" : "single-sided"})
+      </p>
+      {item.pageStatus !== null && item.pageStatus !== "detected" && (
+        <p className="text-xs text-slate">
+          {item.pageStatus === "estimated"
+            ? "Word documents can change length when printed, so staff check the page count and confirm the final price."
+            : "Staff check the page count and confirm the final price."}{" "}
+          GCash isn&apos;t available for this order; pay at pickup.
+        </p>
+      )}
 
       {/* An add-on the shop stopped offering while this form was open */}
       {((o.binding && !addOns.binding) || (o.lamination && !addOns.lamination)) && (

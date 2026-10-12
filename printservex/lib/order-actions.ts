@@ -15,6 +15,7 @@ import {
   type PrepareUploadsResult,
 } from "@/lib/order-input";
 import type { Order, OrderItem } from "@/lib/orders";
+import { countPages, type PageCount } from "@/lib/page-count";
 import { checkGcashRef, checkReceipt, gcashUnavailable } from "@/lib/payments";
 import { photoSizeText, priceLine } from "@/lib/price";
 import { getPricingData, toPrices } from "@/lib/pricing-data";
@@ -81,6 +82,16 @@ export async function prepareUploads(raw: unknown, rawReceipt: unknown = null): 
  */
 // The first 1024 bytes of an uploaded file (to check its real type), or null if it can't be read.
 // Only those bytes are downloaded, with a short-lived link made by the server.
+// The whole uploaded document (up to the 25 MB upload limit), to count its pages on the server
+async function wholeFile(path: string): Promise<ArrayBuffer | null> {
+  const { data, error } = await supabaseAdmin.storage.from(ORDER_FILES_BUCKET).download(path);
+  if (error || !data) {
+    console.error("placeOrder: reading the document failed", error?.message);
+    return null;
+  }
+  return data.arrayBuffer();
+}
+
 async function firstBytes(path: string): Promise<Uint8Array | null> {
   const { data, error } = await supabaseAdmin.storage.from(ORDER_FILES_BUCKET).createSignedUrl(path, 60);
   if (error || !data) {
@@ -137,8 +148,13 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
     const category = service && pricing.categories.find((c) => c.key === service.categoryKey);
     if (!service || !category) return { ok: false, error: "A service in your order is no longer offered. Please go back and choose again." };
 
+    // Document Printing needs its print options; the other services don't take them
+    const isDocument = service.kind === "document";
+    if (isDocument !== (item.options !== null)) return { ok: false, error: TRY_AGAIN };
+
     // The file: really uploaded to this order's folder, and a type this service accepts
     let bytes: number | null = null;
+    let pageCount: PageCount | null = null; // documents: counted HERE from the uploaded file
     if (item.path !== null && item.fileName !== null) {
       bytes = storedSizes.get(item.path) ?? 0;
       if (!bytes || !item.path.startsWith(`${input.batch}/`)) {
@@ -146,18 +162,31 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
       }
       const fileProblem = checkFileMeta(item.fileName, bytes, service);
       if (fileProblem) return { ok: false, error: fileProblem };
-      // The name says JPG / PNG / PDF / DOCX: check the file's first bytes really are that type
-      const first = await firstBytes(item.path);
+      // Documents: the whole file is read once, to check its type AND count its pages.
+      // Other services only need the first bytes.
+      const whole = isDocument ? await wholeFile(item.path) : null;
+      const first = whole ? new Uint8Array(whole, 0, Math.min(1024, whole.byteLength)) : isDocument ? null : await firstBytes(item.path);
       if (!first) return { ok: false, error: TRY_AGAIN };
+      // The name says JPG / PNG / PDF / DOCX: check the file's first bytes really are that type
       if (!matchesExtension(item.fileName, first)) {
         return { ok: false, error: `${item.fileName} isn't a real ${item.fileName.split(".").pop()?.toUpperCase()} file. Please upload the original file.` };
       }
+      if (whole) {
+        pageCount = await countPages(item.fileName, whole);
+        if (!pageCount.ok) return { ok: false, error: `${item.fileName} ${pageCount.error}.` };
+      }
     }
 
-    // Document Printing needs its print options; the other services don't take them
-    if ((service.kind === "document") !== (item.options !== null)) return { ok: false, error: TRY_AGAIN };
-    const options = item.options ?? { sizeId: "", typeId: "", color: false, pages: 1, copies: 1, binding: false, lamination: false, laminationSize: null };
+    // Business rule: the page count the browser sends is never trusted. A count read from the file (exact
+    // for PDF, Word's estimate for DOCX) replaces it. Only a file we can't count keeps the typed number,
+    // and it is marked for staff review.
+    const typed = item.options ?? { sizeId: "", typeId: "", color: false, pages: 1, copies: 1, binding: false, lamination: false, laminationSize: null };
+    const options = pageCount?.ok && pageCount.pages !== null ? { ...typed, pages: pageCount.pages } : typed;
     const details = { ...item.details };
+    if (pageCount?.ok) {
+      details.pageCount = pageCount.status;
+      if (pageCount.note) details.pageNote = pageCount.note;
+    }
     const line = { service, options, details, hasFile: bytes !== null };
     const problem = checkLineDetails(service, details, line.hasFile, sizeIds);
     if (problem) return { ok: false, error: `${service.name}: ${problem}` };
@@ -266,7 +295,9 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
   let reference: string | null = null;
   if (method === "gcash") {
     const quotes = rows.filter((r) => r.line_total === null).length;
-    const unavailable = gcashUnavailable(settings, quotes, total);
+    // Documents whose pages staff must check (estimated or not counted): the price isn't final
+    const reviews = rows.filter((r) => r.kind === "document" && r.details.pageCount !== "detected").length;
+    const unavailable = gcashUnavailable(settings, quotes, total, reviews);
     if (unavailable) return { ok: false, error: unavailable };
     reference = input.payment?.reference ?? "";
     const refProblem = checkGcashRef(reference);
