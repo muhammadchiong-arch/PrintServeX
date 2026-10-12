@@ -20,7 +20,7 @@ export type OrderLine = {
 // photoSizes: the Photo Printing sizes (Wallet, 3R, 4R…), active ones only
 export type Catalog = { sizes: PaperSize[]; types: PaperType[]; categories: ServiceCategory[]; services: Service[]; photoSizes: PhotoSize[] };
 
-export const STEPS = ["Your details", "Service", "Files & options", "Review"] as const;
+export const STEPS = ["Your details", "Service", "Files & options", "Payment", "Review"] as const;
 
 export const findService = (catalog: Pick<Catalog, "services">, id: string) => catalog.services.find((s) => s.id === id);
 

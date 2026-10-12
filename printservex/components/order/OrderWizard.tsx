@@ -4,14 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Stepper } from "@/components/ui/Stepper";
 import { useToast } from "@/components/ui/Toast";
+import type { Checkout } from "@/lib/customer-orders";
 import { checkFile, isImage, readPageCount } from "@/lib/files";
+import { formatPeso } from "@/lib/format";
 import { EMPTY_DETAILS, validateDetails, type CustomerDetails, type DetailsErrors } from "@/lib/order-details";
+import { EMPTY_PAYMENT, paymentProblem, type PaymentChoice, type PaymentSettings } from "@/lib/payments";
 import { priceOrder, type Prices, type PrintOptions } from "@/lib/price";
 import { defaultDetails, multiFile, type LineDetails, type Service } from "@/lib/services";
 import { UPLOAD_RULES } from "@/lib/shop";
 import { DetailsStep } from "./DetailsStep";
 import { FilesStep } from "./FilesStep";
 import { OrderHeader } from "./OrderHeader";
+import { PaymentStep } from "./PaymentStep";
 import { MobileOrderBar, PriceSummary, type SummaryAction } from "./PriceSummary";
 import { ReviewStep } from "./ReviewStep";
 import { ServiceStep } from "./ServiceStep";
@@ -21,19 +25,21 @@ type OrderWizardProps = Omit<Catalog, "photoSizes"> & {
   prices: Prices;
   // "customer" = full-page form at /order · "staff" = Walk-in order inside the staff portal
   variant: "customer" | "staff";
+  // Settings → Payment: which methods are on, the shop's GCash QR (supabase/014_payments.sql)
+  paymentSettings: PaymentSettings;
   // Saves the order. Returns an error message to show, or null when it worked.
-  onSubmit: (order: { details: CustomerDetails; lines: OrderLine[]; catalog: Catalog }) => Promise<string | null>;
+  onSubmit: (order: { details: CustomerDetails; lines: OrderLine[]; catalog: Catalog; checkout: Checkout }) => Promise<string | null>;
 };
 
-const STAFF_STEPS = ["Customer", "Service", "Files & options", "Review"];
+const STAFF_STEPS = ["Customer", "Service", "Files & options", "Payment", "Review"];
 // Business rule: up to 10 items (lines) per order, each with at most one file
 const MAX_LINES = UPLOAD_RULES.maxFilesPerOrder;
 
 /**
- * The 4-step new order form, used by customers (C2) and by staff for walk-ins (S5).
- * Steps: 0 = Your details, 1 = Service, 2 = Files & options, 3 = Review.
+ * The 5-step new order form, used by customers (C2) and by staff for walk-ins (S5).
+ * Steps: 0 = Your details, 1 = Service, 2 = Files & options, 3 = Payment, 4 = Review.
  */
-export function OrderWizard({ sizes, types, categories, services, prices, variant, onSubmit }: OrderWizardProps) {
+export function OrderWizard({ sizes, types, categories, services, prices, variant, paymentSettings, onSubmit }: OrderWizardProps) {
   const catalog = useMemo(
     () => ({ sizes, types, categories, services, photoSizes: prices.photoSizes }),
     [sizes, types, categories, services, prices.photoSizes],
@@ -50,7 +56,15 @@ export function OrderWizard({ sizes, types, categories, services, prices, varian
   const [chosen, setChosen] = useState<string[]>([]); // service ids, in the order they were added
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [fileErrors, setFileErrors] = useState<Record<string, string[]>>({});
-  const [triedFiles, setTriedFiles] = useState(false); // show what's missing after "Review order"
+  const [triedFiles, setTriedFiles] = useState(false); // show what's missing after "Continue to payment"
+  const [payment, setPayment] = useState<PaymentChoice>(EMPTY_PAYMENT);
+  const [triedPayment, setTriedPayment] = useState(false);
+  // The total the customer agreed to pay by GCash (set by "Continue to review"). If the order
+  // changes afterwards, they must look at the Payment step again before submitting.
+  const [agreedTotal, setAgreedTotal] = useState<number | null>(null);
+  // One id per form: if Submit is sent twice (double tap, retry after a lost connection), the
+  // server returns the first order instead of making a second one
+  const [checkoutId] = useState(() => crypto.randomUUID());
   const headingRef = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
 
@@ -200,11 +214,25 @@ export function OrderWizard({ sizes, types, categories, services, prices, varian
           ? "Fix the items marked in red to continue."
           : undefined);
 
+  // ---------- Payment (step 4) ----------
+  const payProblem = paymentProblem(payment, paymentSettings, { quoteCount: totals.quoteCount, total: totals.total }, isStaff);
+  const totalChanged = payment.method === "gcash" && agreedTotal !== null && agreedTotal !== totals.total;
+  const paymentHint = payProblem ?? (totalChanged ? `Your total changed to ${formatPeso(totals.total)}. Check the amount you pay.` : undefined);
+
+  const changePayment = (patch: Partial<PaymentChoice>) =>
+    setPayment((p) => {
+      const next = { ...p, ...patch };
+      // Cash needs no GCash details: forget them so they are never sent by mistake
+      return next.method === "cash" ? { method: "cash", reference: "", receipt: null } : next;
+    });
+
   // Business rule: a step can only be shown once the steps before it are complete
   // (e.g. after a page refresh the browser forgets the form, so we go back to step 1)
   const requested = Number(searchParams.get("step") ?? 0);
   const detailsDone = Object.keys(validateDetails(details, rulesOpt)).length === 0;
-  const step = !detailsDone || requested < 1 ? 0 : requested < 2 || serviceHint ? 1 : requested < 3 || filesHint ? 2 : 3;
+  const paymentDone = !payProblem && (payment.method !== "gcash" || agreedTotal === totals.total);
+  const step =
+    !detailsDone || requested < 1 ? 0 : requested < 2 || serviceHint ? 1 : requested < 3 || filesHint ? 2 : requested < 4 || !paymentDone ? 3 : 4;
 
   // After a step change: scroll to the top and move keyboard/screen-reader focus to the new title
   useEffect(() => {
@@ -216,16 +244,25 @@ export function OrderWizard({ sizes, types, categories, services, prices, varian
     headingRef.current?.focus();
   }, [step]);
 
-  const reviewOrder = () => {
+  const toPayment = () => {
     if (!filesHint) return goTo(3);
     // Show what's missing on each card, and jump to the first one
     setTriedFiles(true);
     requestAnimationFrame(() => document.querySelector<HTMLElement>("[role=alert]")?.scrollIntoView({ behavior: "smooth", block: "center" }));
   };
 
+  const reviewOrder = () => {
+    if (!payProblem) {
+      setAgreedTotal(totals.total);
+      return goTo(4);
+    }
+    setTriedPayment(true);
+    requestAnimationFrame(() => document.querySelector<HTMLElement>("[role=alert], [aria-invalid=true]")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  };
+
   const submit = async () => {
     setSubmitting(true); // stops a double tap from sending the order twice
-    const error = await onSubmit({ details, lines, catalog });
+    const error = await onSubmit({ details, lines, catalog, checkout: { id: checkoutId, payment, expectedTotal: totals.total } });
     if (error) {
       // Nothing was saved: let the customer try again
       setSubmitting(false);
@@ -242,10 +279,12 @@ export function OrderWizard({ sizes, types, categories, services, prices, varian
     },
     { label: "Continue to files & options", onClick: () => goTo(2), disabled: Boolean(serviceHint), hint: serviceHint },
     // Not disabled for missing options: pressing it shows what's missing on each card
-    { label: "Review order", onClick: reviewOrder, disabled: Boolean(serviceHint) || reading, hint: filesHint },
+    { label: "Continue to payment", onClick: toPayment, disabled: Boolean(serviceHint) || reading, hint: filesHint },
+    // Not disabled either: pressing it shows what's missing in the payment details
+    { label: "Review order", onClick: reviewOrder, disabled: false, hint: paymentHint },
     { label: submitting ? "Submitting…" : isStaff ? "Create order" : "Submit order", onClick: submit, disabled: submitting },
   ];
-  const backLabels = ["", "Back to details", "Back to services", "Back to files & options"];
+  const backLabels = ["", "Back to details", "Back to services", "Back to files & options", "Back to payment"];
   const back = step > 0 ? { label: backLabels[step], onClick: () => window.history.back() } : undefined;
 
   const stepContent = (
@@ -283,7 +322,21 @@ export function OrderWizard({ sizes, types, categories, services, prices, varian
           onRemoveService={removeService}
         />
       )}
-      {step === 3 && <ReviewStep details={details} chosen={chosen} lines={lines} totals={totals} catalog={catalog} prices={prices} onEdit={goTo} />}
+      {step === 3 && (
+        <PaymentStep
+          settings={paymentSettings}
+          choice={payment}
+          total={totals.total}
+          quoteCount={totals.quoteCount}
+          walkIn={isStaff}
+          showProblems={triedPayment || totalChanged}
+          problem={paymentHint ?? null}
+          onChange={changePayment}
+        />
+      )}
+      {step === 4 && (
+        <ReviewStep details={details} chosen={chosen} lines={lines} totals={totals} catalog={catalog} prices={prices} payment={payment} onEdit={goTo} />
+      )}
     </>
   );
 

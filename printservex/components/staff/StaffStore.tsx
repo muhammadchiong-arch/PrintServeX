@@ -27,6 +27,7 @@ type StaffContext = StaffData & {
   cancelOrder: (ref: string, reason: string) => Promise<boolean>;
   completeOrder: (ref: string, method: PaymentMethod) => Promise<boolean>;
   setFinalPrice: (ref: string, amount: number, note: string) => Promise<boolean>;
+  verifyPayment: (ref: string, approve: boolean, reason: string) => Promise<boolean>;
   setRemarks: (ref: string, remarks: string) => Promise<boolean>;
   moveStock: (itemId: string, type: "in" | "out", qty: number, note: string) => Promise<boolean>;
   addItem: (item: ItemFields & { qty: number }) => Promise<boolean>;
@@ -89,6 +90,7 @@ export function StaffStoreProvider({ me, data, children }: { me: StaffUser; data
       cancelOrder: (ref, reason) => run(actions.cancelOrder(ref, reason)),
       completeOrder: (ref, method) => run(actions.completeOrder(ref, method)),
       setFinalPrice: (ref, amount, note) => run(actions.setFinalPrice(ref, amount, note)),
+      verifyPayment: (ref, approve, reason) => run(actions.verifyPayment(ref, approve, reason)),
       setRemarks: (ref, remarks) => run(actions.setRemarks(ref, remarks)),
       moveStock: (itemId, type, qty, note) => run(actions.moveStock(itemId, type, qty, note)),
       addItem: (item) => run(actions.addItem(item)),

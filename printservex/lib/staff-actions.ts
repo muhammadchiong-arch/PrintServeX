@@ -74,6 +74,33 @@ export async function getFileLink(ref: string, position: number, mode: "view" | 
   return { ok: true, url: data.signedUrl };
 }
 
+// ---------- Online payment (supabase/014_payments.sql) ----------
+
+// Business rule: staff check the GCash payment in the shop's GCash app first.
+// Confirm = paid; Reject (reason required) = the customer pays at pickup.
+export async function verifyPayment(ref: string, approve: boolean, reason: string): Promise<ActionResult> {
+  if (!isRef(ref) || typeof approve !== "boolean" || typeof reason !== "string") return FAILED;
+  return rpc("staff_verify_payment", { p_ref: ref, p_approve: approve, p_reason: reason.slice(0, 300) });
+}
+
+// The customer's GCash receipt: a link that works for 5 minutes, for signed-in staff only
+export async function getReceiptLink(ref: string, mode: "view" | "download" = "view"): Promise<{ ok: true; url: string } | Fail> {
+  if (!isRef(ref) || (mode !== "view" && mode !== "download")) return FAILED;
+  if (!(await getCurrentStaff())) return SIGNED_OUT;
+  const supabase = await createStaffClient();
+  const { data: order } = await supabase.from("orders").select("receipt_path").eq("ref", ref).maybeSingle();
+  if (!order?.receipt_path) return { ok: false, error: "This order has no receipt. Receipts are kept for 30 days." };
+  const name = `receipt-${ref}.${String(order.receipt_path).split(".").pop()}`;
+  const { data, error } = await supabase.storage
+    .from(ORDER_FILES_BUCKET)
+    .createSignedUrl(order.receipt_path, 300, mode === "download" ? { download: name } : undefined);
+  if (error || !data) {
+    console.error("getReceiptLink:", error?.message);
+    return { ok: false, error: "The receipt couldn't be opened. Try again." };
+  }
+  return { ok: true, url: data.signedUrl };
+}
+
 // ---------- Inventory (S7/S8) ----------
 
 export async function moveStock(itemId: string, type: "in" | "out", qty: number, note: string): Promise<ActionResult> {

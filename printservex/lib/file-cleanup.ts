@@ -45,6 +45,30 @@ async function cleanOldOrderFiles(): Promise<number> {
   return items.length;
 }
 
+// 1b. GCash receipts of the same old, closed orders (supabase/014_payments.sql)
+async function cleanOldReceipts(): Promise<number> {
+  const before = new Date(Date.now() - KEEP_DAYS * 86_400_000).toISOString();
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("id, receipt_path")
+    .not("receipt_path", "is", null)
+    .lt("created_at", before)
+    .in("status", ["completed", "cancelled"])
+    .limit(500);
+  if (error?.code === "42703") return 0; // 014 not run yet: there are no receipts
+  if (error) throw new Error(`Finding old receipts failed: ${error.message}`);
+  const orders = (data ?? []).filter((o) => o.receipt_path);
+  if (orders.length === 0) return 0;
+
+  await removeFiles(orders.map((o) => o.receipt_path as string));
+  const { error: updateError } = await supabaseAdmin
+    .from("orders")
+    .update({ receipt_path: null })
+    .in("id", orders.map((o) => o.id));
+  if (updateError) throw new Error(`Clearing receipt paths failed: ${updateError.message}`);
+  return orders.length;
+}
+
 // 2. Upload folders (one per order attempt) that no order uses
 async function cleanAbandonedUploads(): Promise<number> {
   const bucket = supabaseAdmin.storage.from(ORDER_FILES_BUCKET);
@@ -65,7 +89,14 @@ async function cleanAbandonedUploads(): Promise<number> {
       .from("order_items")
       .select("id", { count: "exact", head: true })
       .like("storage_path", `${folder.name}/%`);
-    if (count === 0) stale.push(...files.map((f) => `${folder.name}/${f.name}`));
+    if (count !== 0) continue;
+    // A GCash receipt can be the only file of an order (a service without a file)
+    const { count: receipts, error: receiptError } = await supabaseAdmin
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .like("receipt_path", `${folder.name}/%`);
+    if (receiptError && receiptError.code !== "42703") continue; // not sure: keep the files
+    if (!receipts) stale.push(...files.map((f) => `${folder.name}/${f.name}`));
   }
 
   await removeFiles(stale);
@@ -73,7 +104,7 @@ async function cleanAbandonedUploads(): Promise<number> {
 }
 
 export async function cleanupFiles(): Promise<CleanupResult> {
-  const orderFiles = await cleanOldOrderFiles();
+  const orderFiles = (await cleanOldOrderFiles()) + (await cleanOldReceipts());
   const abandonedFiles = await cleanAbandonedUploads();
   // Wrong Track-order tries only matter for an hour (lib/track.ts); remove those older than a day
   const dayAgo = new Date(Date.now() - 86_400_000).toISOString();

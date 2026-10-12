@@ -1,5 +1,6 @@
 import { isLaminationSize, LAMINATION_LABELS } from "@/lib/price";
 import { areaSqFt, BACKGROUND_LABELS, type LineDetails, type ServiceKind } from "@/lib/services";
+import type { PaymentStatus } from "@/lib/payments";
 import type { OrderStatus } from "@/lib/status";
 
 // One line of an order: a service with its options, and at most one file.
@@ -45,7 +46,21 @@ export type Order = {
   final?: { amount: number; note: string }; // set by staff after checking the files
   cancelReason?: string;
   remarks?: string; // staff only
-  payment?: { method: PaymentMethod; amount: number; at: string; by: string };
+  payment?: { method: PaymentMethod; amount: number; at: string; by: string }; // recorded when completed
+  paymentInfo?: PaymentInfo; // chosen at checkout (Step 4); missing on orders from before it existed
+};
+
+// How the customer chose to pay, and what happened to it (supabase/014_payments.sql).
+// amount: what the customer was asked to pay online (GCash only).
+export type PaymentInfo = {
+  method: PaymentMethod;
+  status: PaymentStatus;
+  amount: number | null;
+  reference?: string; // GCash reference number
+  hasReceipt: boolean; // the receipt itself is only opened by staff, with a short-lived link
+  verifiedBy?: string;
+  verifiedAt?: string;
+  rejectReason?: string;
 };
 
 // "gcash" is the value saved in the database (supabase/006, 008). People see "Online payment":

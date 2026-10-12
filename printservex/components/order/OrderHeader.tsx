@@ -11,8 +11,8 @@ type OrderHeaderProps = {
 
 const iconBtn = "flex size-11 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-bg active:bg-bg";
 
-// Phones: back/close button, step title, "Step 2 of 4" and a progress bar.
-// Desktop: logo on the left, the 4-step stepper on the right.
+// Phones: back/close button, step title, "Step 2 of 5" and a progress bar.
+// Desktop: logo on the left, the 5-step stepper on the right.
 export function OrderHeader({ step, onBack }: OrderHeaderProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-surface">

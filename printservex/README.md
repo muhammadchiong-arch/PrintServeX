@@ -10,8 +10,10 @@
 
 - **Customers** (no account needed) choose a service, upload their files, see the price right away, and get a
   reference number. They track the order with the reference number and the last 4 digits of their phone.
-  They pay when they pick up: cash, or online payment (GCash, Maya or bank transfer) checked by staff at the counter.
-- **Staff** see the orders, open the customer's file, start printing, mark it ready and record the payment.
+  In Step 4 (Payment) they choose **Cash on Pickup** or **GCash** (scan the shop's QR, then enter the GCash reference
+  number and upload the receipt). A GCash payment stays "Pending verification" until staff confirm it.
+- **Staff** see the orders, open the customer's file, start printing, mark it ready, confirm GCash payments and record
+  cash payments.
   They also take walk-in orders and keep the inventory (paper, lamination film, supplies) up to date.
 - **The admin (shop owner)** also sets prices, adds staff accounts, sees reports and changes shop info.
 
@@ -79,6 +81,11 @@ The values are in Supabase and Vercel. They are never written in this repository
    photo size (not a paper size); each size has its own price, set by the admin. All start as "Price to be confirmed".
    Inventory items can be linked to a photo size ("Photo paper"). Until it is run, Photo Printing works as before
    (one price, no size).
+14. `supabase/014_payments.sql` – the Payment step (Cash on Pickup / GCash): payment settings, payment status on each
+   order (unpaid / pending verification / paid / rejected), staff Confirm / Reject, one order per checkout (no
+   duplicates), and a security fix: staff can no longer edit payment columns directly. Until it is run, the order
+   form offers Cash on Pickup only. Then, as admin: **Settings → Payment** → upload the shop's GCash QR, enter the
+   account name, tick GCash, Save.
 
 After that, sign in as the owner and add the other staff on the Users page.
 
@@ -137,6 +144,11 @@ be changed at first sign-in). Never write real passwords in the code, the README
   site) or **Download** (DOCX files can only be downloaded).
 - **Process an order:** check the **Materials** card → **Start processing** (takes the paper and film from
   stock) → print → **Mark ready for pickup** → when the customer pays, **Record payment & complete**.
+- **Check a GCash payment:** open the order → Price card → **View receipt**, then find the reference number and amount
+  in the shop's GCash app → **Confirm payment** (or **Reject** with a reason; the customer then pays at pickup).
+  An order can't be completed while its GCash payment is still pending.
+- **Payment settings:** (admin) Settings → Payment: Cash on Pickup on/off, GCash on/off, the QR code, account name,
+  an extra note, and whether the receipt screenshot is required.
 - **Manage staff:** (admin) Users → Add staff / Reset password / Deactivate.
 
 ## 9. Troubleshooting
@@ -185,14 +197,22 @@ Vercel → Settings → Environment Variables; without it the cleanup never runs
   `services`. A photo size is not a paper size. The order keeps the size name and price (`details.photoSizeName`,
   `details.photoRate`). The customer gets a warning (never a block) if the photo is too small for the size
   (under 150 pixels per inch) or a different shape (staff fit it without stretching) — `lib/photo-quality.ts`.
+- **Payment step:** `components/order/PaymentStep.tsx`, rules in `lib/payments.ts` (browser and server) and
+  `supabase/014_payments.sql`. The browser sends only the method, the GCash reference and the receipt's upload path;
+  the server works out the amount, refuses a GCash order whose total changed, checks the receipt's real type, and the
+  database sets the status. GCash is only offered when every item has a price. Receipts are in the private
+  `order-files` bucket (staff open them with a 5-minute link); the QR is in the public `shop-public` bucket.
 - **Uploaded files are checked by content:** the server reads each file's first bytes, so a renamed file
   (e.g. `.exe` → `.jpg`) is refused (`lib/file-signature.ts`).
 
 ## 12. Known limitations
 
 - DOCX files can't be previewed in the browser; staff download them.
-- Payment is recorded by staff at the counter: cash, or online payment (GCash, Maya, bank transfer) that staff check
-  on the customer's phone. Customers can't pay inside the website, and online payments aren't confirmed automatically.
+- GCash is manual: there is no payment gateway, so the website never knows by itself that money arrived. Staff must
+  check every payment in the shop's GCash app before pressing Confirm. A real gateway (e.g. PayMongo) needs a
+  merchant account and keys.
+- Orders with a "Price to be confirmed" item can only be paid at pickup. Once a GCash payment is sent, the final price
+  can't change (reject the payment first). Refunds and partial payments are done outside the system.
 - Only Document paper, lamination film and Photo Printing photo paper are taken from stock automatically. Other
   supplies (ink, toner, sticker paper, ID photo paper) are counted by hand with Stock in / Stock out.
 - Photo Printing takes 1 sheet per print. Wallet prints cut from a bigger sheet are counted the same way.

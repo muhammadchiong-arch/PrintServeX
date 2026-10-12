@@ -33,3 +33,6 @@ export const UPLOAD_RULES = {
   maxFileMb: 25,
   maxFilesPerOrder: 10,
 } as const;
+
+// Public bucket for the shop's GCash QR code only (supabase/014_payments.sql). Never for customer files.
+export const SHOP_PUBLIC_BUCKET = "shop-public";

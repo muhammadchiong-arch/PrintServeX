@@ -111,7 +111,13 @@ export function Confirmation() {
           {order && (
             <span className="flex items-center gap-1.5 font-semibold text-navy">
               <Store size={18} aria-hidden />
-              Estimated total {formatPeso(amountDue(order))} · pay at pickup
+              Estimated total {formatPeso(amountDue(order))} ·{" "}
+              {order.paymentInfo?.method === "gcash" ? "GCash, pending verification" : "pay at pickup"}
+            </span>
+          )}
+          {order?.paymentInfo?.method === "gcash" && (
+            <span>
+              Staff check your GCash payment (reference {order.paymentInfo.reference}). It shows as paid on the tracking page once they confirm it.
             </span>
           )}
           <span>

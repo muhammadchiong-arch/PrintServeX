@@ -6,6 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { matchesExtension } from "@/lib/file-signature";
 import { checkFileMeta, formatFileSize } from "@/lib/files";
+import { formatPeso } from "@/lib/format";
 import { normalizePhone, validateDetails } from "@/lib/order-details";
 import {
   parseFileMetas,
@@ -14,9 +15,11 @@ import {
   type PrepareUploadsResult,
 } from "@/lib/order-input";
 import type { Order, OrderItem } from "@/lib/orders";
+import { checkGcashRef, checkReceipt, gcashUnavailable } from "@/lib/payments";
 import { photoSizeText, priceLine } from "@/lib/price";
 import { getPricingData, toPrices } from "@/lib/pricing-data";
 import { checkLineDetails } from "@/lib/services";
+import { getPaymentSettings } from "@/lib/shop-data";
 import { getCurrentStaff } from "@/lib/staff-session";
 import { UPLOAD_RULES } from "@/lib/shop";
 import { ORDER_FILES_BUCKET, supabaseAdmin } from "@/lib/supabase-admin";
@@ -26,15 +29,20 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // "Thesis Ch.1 (final).pdf" → "Thesis-Ch.1-final-.pdf" (Storage only accepts simple names)
 const safeName = (name: string) => name.replace(/[^A-Za-z0-9._-]+/g, "-").slice(-100);
+// The GCash receipt's file name in the order folder ("<batch>/receipt-gcash.png")
+const RECEIPT_PREFIX = "receipt-";
 
 /**
  * Step 1 of submitting: checks the files and gives the browser one-time upload links.
  * The files then go straight from the browser to Supabase Storage. They don't pass through
  * our server, because Vercel's free plan only accepts about 4.5 MB per request.
  */
-export async function prepareUploads(raw: unknown): Promise<PrepareUploadsResult> {
+// rawReceipt: the GCash receipt (Step 4), in the same private folder as the order's files
+export async function prepareUploads(raw: unknown, rawReceipt: unknown = null): Promise<PrepareUploadsResult> {
   const files = parseFileMetas(raw);
-  if (!files || files.length === 0) return { ok: false, error: "Add at least one file." };
+  const receipt = rawReceipt === null ? null : (parseFileMetas([rawReceipt])?.[0] ?? null);
+  if (rawReceipt !== null && !receipt) return { ok: false, error: TRY_AGAIN };
+  if (!files || (files.length === 0 && !receipt)) return { ok: false, error: "Add at least one file." };
   if (files.length > UPLOAD_RULES.maxFilesPerOrder) {
     return { ok: false, error: `You can send up to ${UPLOAD_RULES.maxFilesPerOrder} files per order.` };
   }
@@ -42,20 +50,19 @@ export async function prepareUploads(raw: unknown): Promise<PrepareUploadsResult
     const problem = checkFileMeta(f.name, f.size);
     if (problem) return { ok: false, error: problem };
   }
+  const receiptProblem = receipt && checkReceipt(receipt);
+  if (receiptProblem) return { ok: false, error: receiptProblem };
 
   // Each order gets its own random folder, so nobody can guess another customer's files
   const batch = randomUUID();
+  const ticket = async (path: string) => {
+    const { data, error } = await supabaseAdmin.storage.from(ORDER_FILES_BUCKET).createSignedUploadUrl(path);
+    if (error) throw error;
+    return { path: data.path, token: data.token };
+  };
   try {
-    const uploads = await Promise.all(
-      files.map(async (f, i) => {
-        const { data, error } = await supabaseAdmin.storage
-          .from(ORDER_FILES_BUCKET)
-          .createSignedUploadUrl(`${batch}/${i + 1}-${safeName(f.name)}`);
-        if (error) throw error;
-        return { path: data.path, token: data.token };
-      }),
-    );
-    return { ok: true, batch, uploads };
+    const uploads = await Promise.all(files.map((f, i) => ticket(`${batch}/${i + 1}-${safeName(f.name)}`)));
+    return { ok: true, batch, uploads, receipt: receipt ? await ticket(`${batch}/${RECEIPT_PREFIX}${safeName(receipt.name)}`) : null };
   } catch (e) {
     console.error("prepareUploads failed", e);
     return { ok: false, error: TRY_AGAIN };
@@ -93,7 +100,9 @@ async function firstBytes(path: string): Promise<Uint8Array | null> {
 export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
   const input = parsePlaceOrderInput(raw);
   const withFiles = input?.items.filter((i) => i.path !== null) ?? [];
-  if (!input || (withFiles.length > 0 && !UUID.test(input.batch))) return { ok: false, error: TRY_AGAIN };
+  const receiptPath = input?.payment?.receiptPath ?? null;
+  const usesFolder = withFiles.length > 0 || receiptPath !== null;
+  if (!input || (usesFolder && !UUID.test(input.batch))) return { ok: false, error: TRY_AGAIN };
 
   // Walk-in orders: only signed-in staff, and the customer agrees to privacy at the counter
   const staff = input.walkIn ? await getCurrentStaff() : null;
@@ -105,7 +114,7 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
 
   // Are the files really uploaded? Read their real sizes from Storage (not from the browser).
   const storedSizes = new Map<string, number>();
-  if (withFiles.length > 0) {
+  if (usesFolder) {
     const { data: stored, error: listError } = await supabaseAdmin.storage.from(ORDER_FILES_BUCKET).list(input.batch, { limit: 100 });
     if (listError) {
       console.error("placeOrder: listing files failed", listError);
@@ -246,6 +255,42 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
     email: input.customer.email.trim() || undefined,
   };
 
+  // ---------- Payment (Step 4) ----------
+  // Only the method, the reference and the receipt come from the browser. The status is always set
+  // by the database ("unpaid", or "pending verification" for GCash); the amount is the server's total.
+  const settings = await getPaymentSettings();
+  const method = input.payment?.method ?? "cash"; // forms from before the Payment step: pay at pickup
+  if (method === "cash" && input.payment && !settings.cashEnabled && !staff) {
+    return { ok: false, error: "Cash on Pickup isn't available. Go back to Payment and choose GCash." };
+  }
+  let reference: string | null = null;
+  if (method === "gcash") {
+    const quotes = rows.filter((r) => r.line_total === null).length;
+    const unavailable = gcashUnavailable(settings, quotes, total);
+    if (unavailable) return { ok: false, error: unavailable };
+    reference = input.payment?.reference ?? "";
+    const refProblem = checkGcashRef(reference);
+    if (refProblem) return { ok: false, error: refProblem };
+    // The customer paid the amount they saw. If prices changed meanwhile, nothing is saved.
+    if (input.expectedTotal === null || Math.abs(input.expectedTotal - total) > 0.004) {
+      return { ok: false, error: `Prices changed while you were ordering. The total is now ${formatPeso(total)}. Go back to Payment to check it before you pay.` };
+    }
+    if (receiptPath !== null) {
+      const name = input.payment?.receiptName ?? "";
+      const bytes = storedSizes.get(receiptPath) ?? 0;
+      if (!bytes || !receiptPath.startsWith(`${input.batch}/${RECEIPT_PREFIX}`)) {
+        return { ok: false, error: "Your receipt didn't finish uploading. Please try again." };
+      }
+      const problem = checkReceipt({ name, size: bytes });
+      if (problem) return { ok: false, error: problem };
+      const first = await firstBytes(receiptPath);
+      if (!first) return { ok: false, error: TRY_AGAIN };
+      if (!matchesExtension(name, first)) return { ok: false, error: `${name} isn't a real picture. Upload the screenshot of your GCash receipt.` };
+    } else if (settings.receiptRequired && !staff) {
+      return { ok: false, error: "Upload a screenshot of your GCash receipt." };
+    }
+  }
+
   const { data: ref, error } = await supabaseAdmin.rpc("create_order", {
     p_source: staff ? "walk-in" : "online",
     p_customer_name: customer.name,
@@ -255,10 +300,15 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
     p_items: rows,
     p_created_by: staff?.id ?? null,
     p_actor_label: staff?.name ?? "Online order",
+    p_checkout_id: input.checkoutId,
+    p_payment_method: method,
+    p_gcash_reference: reference,
+    p_receipt_path: method === "gcash" ? receiptPath : null,
   });
   if (error || typeof ref !== "string") {
     console.error("placeOrder: create_order failed", error);
-    return { ok: false, error: TRY_AGAIN };
+    // The database's own rules (e.g. a GCash reference already used) are written for people
+    return { ok: false, error: error?.code === "P0001" ? error.message : TRY_AGAIN };
   }
 
   if (staff) {
@@ -274,6 +324,13 @@ export async function placeOrder(raw: unknown): Promise<PlaceOrderResult> {
     status: "pending",
     createdAt: now,
     history: [staff ? { status: "pending", at: now, by: staff.name, note: "Walk-in" } : { status: "pending", at: now, by: "Online order" }],
+    paymentInfo: {
+      method,
+      status: method === "gcash" ? "pending_verification" : "unpaid",
+      amount: method === "gcash" ? total : null,
+      reference: reference ?? undefined,
+      hasReceipt: method === "gcash" && receiptPath !== null,
+    },
   };
   return { ok: true, order };
 }

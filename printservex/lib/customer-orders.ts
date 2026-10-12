@@ -9,6 +9,7 @@ import { contentTypeFor } from "@/lib/files";
 import { prepareUploads, placeOrder } from "@/lib/order-actions";
 import type { CustomerDetails } from "@/lib/order-details";
 import type { Order } from "@/lib/orders";
+import type { PaymentChoice } from "@/lib/payments";
 import { supabase } from "@/lib/supabase";
 
 const KEY = "psx-orders";
@@ -31,15 +32,38 @@ export type SubmitResult = { ok: true; order: Order } | { ok: false; error: stri
  * 2. the browser uploads each file straight to Storage,
  * 3. the server checks everything again, calculates the price and saves the order.
  */
-export async function submitOrder(details: CustomerDetails, lines: OrderLine[], catalog: Catalog, opts: { walkIn?: boolean } = {}): Promise<SubmitResult> {
+// checkout: one id per checkout form (a retry never makes two orders), the payment chosen in
+// Step 4, and the total the customer saw (the server refuses a GCash order if its total differs)
+export type Checkout = { id: string; payment: PaymentChoice; expectedTotal: number };
+
+export async function submitOrder(
+  details: CustomerDetails,
+  lines: OrderLine[],
+  catalog: Catalog,
+  checkout: Checkout,
+  opts: { walkIn?: boolean } = {},
+): Promise<SubmitResult> {
   try {
     const withFiles = lines.filter((l): l is OrderLine & { file: File } => l.file !== null);
     const paths = new Map<string, string>(); // line id → where its file was uploaded
+    const gcash = checkout.payment.method === "gcash";
+    const receipt = gcash ? checkout.payment.receipt : null;
+    let receiptPath: string | null = null;
     let batch = "";
-    if (withFiles.length > 0) {
-      const prepared = await prepareUploads(withFiles.map((l) => ({ name: l.file.name, size: l.file.size })));
+    if (withFiles.length > 0 || receipt) {
+      const prepared = await prepareUploads(
+        withFiles.map((l) => ({ name: l.file.name, size: l.file.size })),
+        receipt ? { name: receipt.name, size: receipt.size } : null,
+      );
       if (!prepared.ok) return prepared;
       batch = prepared.batch;
+      if (receipt && prepared.receipt) {
+        const { error } = await supabase.storage
+          .from(BUCKET)
+          .uploadToSignedUrl(prepared.receipt.path, prepared.receipt.token, receipt, { contentType: contentTypeFor(receipt.name) });
+        if (error) return { ok: false, error: "Your receipt couldn't be uploaded. Check your connection and try again." };
+        receiptPath = prepared.receipt.path;
+      }
 
       for (const [i, l] of withFiles.entries()) {
         const ticket = prepared.uploads[i];
@@ -67,6 +91,15 @@ export async function submitOrder(details: CustomerDetails, lines: OrderLine[], 
         };
       }),
       walkIn: opts.walkIn === true,
+      checkoutId: checkout.id,
+      // Only the method, reference and receipt: the server sets the status and the amount
+      payment: {
+        method: checkout.payment.method,
+        reference: gcash ? checkout.payment.reference : null,
+        receiptPath,
+        receiptName: receipt?.name ?? null,
+      },
+      expectedTotal: checkout.expectedTotal,
     });
     if (!result.ok || opts.walkIn) return result;
 

@@ -15,11 +15,12 @@ import { formatDate, formatDateTime, formatPeso, formatPhone, formatTime } from 
 import { materialNeeds, type MaterialNeed } from "@/lib/inventory-needs";
 import { amountDue, canCancel, estimatedTotal, isQuote, itemAddOns, itemPrinting, itemTotal, laminationLabel, laminationLine, NEXT_STATUS, PAYMENT_LABELS, quoteCount, type Order, type OrderItem } from "@/lib/orders";
 import { areaSqFt, BACKGROUND_LABELS } from "@/lib/services";
-import { getFileLink } from "@/lib/staff-actions";
+import { METHOD_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/payments";
+import { getFileLink, getReceiptLink } from "@/lib/staff-actions";
 import { STATUS_LABELS, type OrderStatus } from "@/lib/status";
 import { BackLink, CardLabel } from "../parts";
 import { useStaff } from "../StaffStore";
-import { CancelModal, PaymentModal } from "./OrderModals";
+import { CancelModal, PaymentModal, RejectPaymentModal } from "./OrderModals";
 
 const card = "flex flex-col rounded-xl bg-surface px-5 py-4 text-sm shadow-card";
 
@@ -59,6 +60,10 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
   const needs = order.status === "pending" ? materialNeeds(order, staff.inventory) : [];
   const short = needs.filter((n) => n.state === "short");
   const blocked = next === "processing" && short.length > 0;
+  // Business rule: a GCash payment waiting to be checked is confirmed or rejected before completing
+  const paymentPending = next === "completed" && order.paymentInfo?.status === "pending_verification";
+  // Already paid by GCash (confirmed): nothing more to collect at pickup
+  const paidOnline = order.paymentInfo?.status === "paid" && order.paymentInfo.amount !== null ? order.paymentInfo.amount : null;
 
   const advance = async () => {
     if (next === "completed") return setPayOpen(true);
@@ -95,7 +100,7 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
             </Button>
           )}
           {next && next !== "cancelled" && (
-            <Button size="md" disabled={busy || blocked} onClick={advance}>
+            <Button size="md" disabled={busy || blocked || paymentPending} onClick={advance}>
               <PrimaryIcon size={16} aria-hidden />
               {primaryLabel[next as keyof typeof primaryLabel]}
             </Button>
@@ -116,6 +121,15 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
             <span className="font-semibold">Out of stock.</span>{" "}
             {short.map((n) => `${n.label} needs ${n.need} ${n.item?.unit ?? ""}, has ${n.item?.qty ?? 0}`).join("; ")}. This order can&apos;t start
             until it is restocked (Inventory → Stock in), or cancel the order.
+          </span>
+        </p>
+      )}
+
+      {paymentPending && (
+        <p role="alert" className="flex items-start gap-2 rounded-lg bg-pending-tint p-3 text-sm">
+          <TriangleAlert size={20} aria-hidden className="shrink-0" />
+          <span>
+            <span className="font-semibold">GCash payment not checked yet.</span> Confirm or reject it in the Price card before completing the order.
           </span>
         </p>
       )}
@@ -174,6 +188,7 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
       <CancelModal
         open={cancelOpen}
         orderRef={order.ref}
+        paidOnline={order.paymentInfo?.status === "paid" ? order.paymentInfo.amount : null}
         onClose={() => setCancelOpen(false)}
         onConfirm={async (reason) => {
           setBusy(true);
@@ -184,14 +199,20 @@ export function OrderDetail({ orderRef }: { orderRef: string }) {
       <PaymentModal
         open={payOpen}
         orderRef={order.ref}
-        amountDue={amountDue(order)}
+        amountDue={paidOnline ?? amountDue(order)}
+        paidOnline={paidOnline !== null}
         onClose={() => setPayOpen(false)}
         onConfirm={async (method) => {
           setPayOpen(false);
           setBusy(true);
           // The server takes the amount from the order itself (final price, or the estimate)
           if (await staff.completeOrder(order.ref, method)) {
-            toast({ message: `Payment of ${formatPeso(amountDue(order))} (${PAYMENT_LABELS[method]}) recorded. Order completed.` });
+            toast({
+              message:
+                paidOnline !== null
+                  ? `Order completed. Paid online (${formatPeso(paidOnline)}).`
+                  : `Payment of ${formatPeso(amountDue(order))} (${PAYMENT_LABELS[method]}) recorded. Order completed.`,
+            });
           }
           setBusy(false);
         }}
@@ -252,6 +273,8 @@ function PriceCard({ order, locked }: { order: Order; locked: boolean }) {
   // Non-document services with a price (binding service, photos, design, ...)
   const otherServices = order.items.filter((i) => i.kind !== "document").reduce((s, i) => s + itemTotal(i), 0);
   const toConfirm = quoteCount(order);
+  // Business rule (014_payments.sql): once a GCash payment is sent, the price stays as paid
+  const onlineLocked = order.paymentInfo?.amount !== null && order.paymentInfo?.amount !== undefined && (order.paymentInfo.status === "pending_verification" || order.paymentInfo.status === "paid");
 
   const [amount, setAmount] = useState((order.final?.amount ?? estimate).toFixed(2));
   const [note, setNote] = useState(order.final?.note ?? "");
@@ -291,7 +314,12 @@ function PriceCard({ order, locked }: { order: Order; locked: boolean }) {
         </p>
       )}
 
-      {locked ? (
+      {onlineLocked && !locked && (
+        <p className="rounded-lg bg-bg px-3 py-2 text-xs text-slate">
+          Paid by GCash, so the price can&apos;t change. Reject the payment first if it really has to change.
+        </p>
+      )}
+      {locked || onlineLocked ? (
         order.final && (
           <>
             <div className="flex justify-between font-semibold">
@@ -361,6 +389,8 @@ function PriceCard({ order, locked }: { order: Order; locked: boolean }) {
             {order.payment.by && <span className="text-slate"> · by {order.payment.by}</span>}
           </span>
         </div>
+      ) : order.paymentInfo ? (
+        <OnlinePayment order={order} />
       ) : (
         order.status !== "cancelled" && (
           // Business rule: customers pay at the counter when they pick up (cash or online payment)
@@ -374,6 +404,115 @@ function PriceCard({ order, locked }: { order: Order; locked: boolean }) {
         )
       )}
     </section>
+  );
+}
+
+// The payment chosen at checkout (Step 4), until the order is completed.
+// Business rule: a GCash payment is only "paid" after staff find it in the shop's GCash app.
+function OnlinePayment({ order }: { order: Order }) {
+  const staff = useStaff();
+  const toast = useToast();
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const info = order.paymentInfo;
+  if (!info) return null;
+  const tone = { unpaid: "bg-pending-tint text-pending", pending_verification: "bg-pending-tint text-pending", paid: "bg-completed-tint text-completed", rejected: "bg-cancelled-tint text-cancelled" }[info.status];
+  const Icon = info.status === "paid" ? CircleCheck : info.status === "rejected" ? CircleX : Clock;
+  const pending = info.status === "pending_verification" && order.status !== "cancelled";
+
+  const confirm = async () => {
+    setSaving(true);
+    if (await staff.verifyPayment(order.ref, true, "")) toast({ message: `GCash payment of ${formatPeso(info.amount ?? 0)} confirmed.` });
+    setSaving(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className={cn("inline-flex items-center gap-1.5 rounded-full py-0.5 pl-2 pr-2.5 text-xs font-semibold", tone)}>
+          <Icon size={12} aria-hidden />
+          {PAYMENT_STATUS_LABELS[info.status]}
+        </span>
+        <span className="text-right text-xs text-slate">
+          {METHOD_LABELS[info.method]}
+          {info.amount !== null && <> · {formatPeso(info.amount)}</>}
+        </span>
+      </div>
+      {info.reference && (
+        <div className="flex justify-between gap-3">
+          <span className="text-slate">GCash reference</span>
+          <span className="tabular font-semibold">{info.reference}</span>
+        </div>
+      )}
+      {info.verifiedAt && (
+        <p className="text-xs text-slate">
+          {info.status === "rejected" ? "Rejected" : "Confirmed"} by {info.verifiedBy ?? "staff"} · {formatDateTime(info.verifiedAt)}
+          {info.rejectReason && <> · {info.rejectReason}</>}
+        </p>
+      )}
+      {info.status === "rejected" && <p className="text-xs text-slate">Collect the payment at pickup.</p>}
+      {info.hasReceipt && <ReceiptButton orderRef={order.ref} />}
+      {info.method === "gcash" && !info.hasReceipt && info.status !== "unpaid" && <p className="text-xs text-slate">No receipt uploaded.</p>}
+      {pending && (
+        <>
+          <p className="rounded-lg bg-pending-tint px-3 py-2 text-xs">
+            Open the shop&apos;s GCash app and find reference <b>{info.reference}</b> for {formatPeso(info.amount ?? 0)}. A receipt or a number alone
+            isn&apos;t proof.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button size="md" variant="dangerOutline" disabled={saving} onClick={() => setRejectOpen(true)}>
+              Reject
+            </Button>
+            <Button size="md" disabled={saving} onClick={confirm}>
+              <CircleCheck size={16} aria-hidden />
+              {saving ? "Saving…" : "Confirm payment"}
+            </Button>
+          </div>
+        </>
+      )}
+      <RejectPaymentModal
+        open={rejectOpen}
+        orderRef={order.ref}
+        onClose={() => setRejectOpen(false)}
+        onConfirm={async (reason) => {
+          setSaving(true);
+          if (await staff.verifyPayment(order.ref, false, reason)) toast({ message: "Payment rejected. The customer sees the reason and pays at pickup." });
+          setSaving(false);
+        }}
+      />
+    </div>
+  );
+}
+
+// The customer's GCash receipt, shown inside the site with a link that works for 5 minutes
+function ReceiptButton({ orderRef }: { orderRef: string }) {
+  const toast = useToast();
+  const [url, setUrl] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
+  const open = async () => {
+    setOpening(true);
+    try {
+      const link = await getReceiptLink(orderRef, "view");
+      if (link.ok) setUrl(link.url);
+      else toast({ kind: "error", message: link.error });
+    } catch {
+      toast({ kind: "error", message: "We couldn't reach the server. Try again." });
+    }
+    setOpening(false);
+  };
+  return (
+    <>
+      <Button size="md" variant="secondary" disabled={opening} onClick={open} className="self-start">
+        <Eye size={16} aria-hidden />
+        {opening ? "Opening…" : "View receipt"}
+      </Button>
+      <Modal wide open={url !== null} onClose={() => setUrl(null)} title={`GCash receipt · ${orderRef}`} description="The link works for 5 minutes. Check the amount, name and reference in the GCash app too.">
+        {url && (
+          // eslint-disable-next-line @next/next/no-img-element -- a short-lived private link, not a site image
+          <img src={url} alt={`GCash receipt for ${orderRef}`} className="mx-auto max-h-[70vh] max-w-full object-contain" />
+        )}
+      </Modal>
+    </>
   );
 }
 

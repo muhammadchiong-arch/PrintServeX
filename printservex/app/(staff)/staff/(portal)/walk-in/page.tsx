@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { CircleAlert } from "lucide-react";
 import { WalkInOrder } from "@/components/staff/WalkInOrder";
 import { getPricingData, toPrices } from "@/lib/pricing-data";
+import { getPaymentSettings } from "@/lib/shop-data";
 
 export const metadata: Metadata = { title: "Walk-in order · PrintServeX Staff" };
 
@@ -11,7 +12,7 @@ export const revalidate = 300;
 
 // S5
 export default async function WalkInPage() {
-  const data = await getPricingData();
+  const [data, payment] = await Promise.all([getPricingData(), getPaymentSettings()]);
   if (!data || data.sizes.length === 0 || data.types.length === 0 || data.services.length === 0) {
     return (
       <p role="alert" className="flex gap-2 rounded-xl bg-surface p-6 text-sm shadow-card">
@@ -22,7 +23,7 @@ export default async function WalkInPage() {
   }
   return (
     <Suspense>
-      <WalkInOrder sizes={data.sizes} types={data.types} categories={data.categories} services={data.services} prices={toPrices(data)} />
+      <WalkInOrder sizes={data.sizes} types={data.types} categories={data.categories} services={data.services} prices={toPrices(data)} paymentSettings={payment} />
     </Suspense>
   );
 }

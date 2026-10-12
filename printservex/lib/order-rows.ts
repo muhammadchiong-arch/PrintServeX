@@ -3,16 +3,32 @@
 
 import { formatFileSize } from "@/lib/files";
 import type { Order, PaymentMethod } from "@/lib/orders";
+import type { PaymentStatus } from "@/lib/payments";
 import type { LineDetails, ServiceKind } from "@/lib/services";
 import type { OrderStatus } from "@/lib/status";
 
 // The columns we read. Must match supabase/001_tables.sql.
-export const ORDER_SELECT =
+const ORDER_COLUMNS =
   "ref, source, customer_name, customer_phone, customer_email, status, estimated_total, final_amount, final_note, " +
-  "cancel_reason, remarks, payment_method, paid_amount, paid_at, created_at, " +
+  "cancel_reason, remarks, payment_method, paid_amount, paid_at, created_at, ";
+// Payment step (supabase/014_payments.sql)
+const PAYMENT_COLUMNS =
+  "payment_status, payment_amount, gcash_reference, receipt_path, payment_verified_label, payment_verified_at, payment_reject_reason, ";
+const ORDER_CHILDREN =
   "order_items(position, service_name, category_name, kind, quantity, details, file_name, file_size_bytes, size_name, paper_name, color, pages, copies, " +
   "binding, lamination, rate, binding_price, lamination_price, line_total), " +
   "order_status_history(status, note, actor_label, at)";
+export const ORDER_SELECT = ORDER_COLUMNS + PAYMENT_COLUMNS + ORDER_CHILDREN;
+const ORDER_SELECT_BEFORE_014 = ORDER_COLUMNS + ORDER_CHILDREN;
+
+// Runs an orders query with the payment columns, or without them if 014 hasn't been run yet
+// (Postgres error 42703 = unknown column), so the site keeps working while it is being updated.
+export async function selectOrders<T extends { error: { code?: string; message: string } | null }>(run: (columns: string) => PromiseLike<T>): Promise<T> {
+  const result = await run(ORDER_SELECT);
+  if (result.error?.code !== "42703") return result;
+  console.error("Payment columns not loaded (run supabase/014_payments.sql?)", result.error.message);
+  return run(ORDER_SELECT_BEFORE_014);
+}
 
 export type OrderRow = {
   ref: string;
@@ -30,6 +46,14 @@ export type OrderRow = {
   paid_amount: number | null;
   paid_at: string | null;
   created_at: string;
+  // Missing (undefined) before 014 is run
+  payment_status?: PaymentStatus;
+  payment_amount?: number | null;
+  gcash_reference?: string | null;
+  receipt_path?: string | null; // never sent to the browser: only whether there is one
+  payment_verified_label?: string | null;
+  payment_verified_at?: string | null;
+  payment_reject_reason?: string | null;
   order_items: {
     position: number;
     service_name: string;
@@ -85,7 +109,7 @@ export function rowToOrder(row: OrderRow): Order {
     history: [...row.order_status_history]
       .sort((a, b) => a.at.localeCompare(b.at))
       // The database writes "Paid ₱120.00 gcash"; show it as "online payment" (PAYMENT_LABELS)
-      .map((h) => ({ status: h.status, at: h.at, by: h.actor_label, note: h.note?.replace(/^(Paid ₱[\d,.]+) gcash$/, "$1 online payment") ?? undefined })),
+      .map((h) => ({ status: h.status, at: h.at, by: h.actor_label, note: h.note?.replace(/^(Paid ₱[\d,.]+) gcash\b/, "$1 online payment") ?? undefined })),
     createdAt: row.created_at,
   };
   if (row.final_amount !== null) order.final = { amount: Number(row.final_amount), note: row.final_note ?? "" };
@@ -95,6 +119,19 @@ export function rowToOrder(row: OrderRow): Order {
     // Who took the payment = who marked it completed
     const by = order.history.findLast((h) => h.status === "completed")?.by ?? "";
     order.payment = { method: row.payment_method, amount: Number(row.paid_amount ?? 0), at: row.paid_at, by };
+  }
+  // The method chosen at checkout and what happened to it (orders from before 014 have no method)
+  if (row.payment_method && row.payment_status) {
+    order.paymentInfo = {
+      method: row.payment_method,
+      status: row.payment_status,
+      amount: row.payment_amount === null || row.payment_amount === undefined ? null : Number(row.payment_amount),
+      reference: row.gcash_reference ?? undefined,
+      hasReceipt: Boolean(row.receipt_path),
+      verifiedBy: row.payment_verified_label ?? undefined,
+      verifiedAt: row.payment_verified_at ?? undefined,
+      rejectReason: row.payment_reject_reason ?? undefined,
+    };
   }
   return order;
 }

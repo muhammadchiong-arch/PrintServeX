@@ -5,7 +5,7 @@ import { CircleAlert } from "lucide-react";
 import { CustomerOrderForm } from "@/components/order/CustomerOrderForm";
 import { buttonClasses } from "@/components/ui/Button";
 import { getPricingData, toPrices } from "@/lib/pricing-data";
-import { getShop } from "@/lib/shop-data";
+import { getPaymentSettings, getShop } from "@/lib/shop-data";
 
 export const metadata: Metadata = { title: "New order · PrintServeX" };
 
@@ -15,7 +15,7 @@ export const revalidate = 300;
 // Server part: loads the price data once, then hands it to the form that runs in the browser
 export default async function NewOrderPage() {
   const shop = await getShop();
-  const data = await getPricingData();
+  const [data, payment] = await Promise.all([getPricingData(), getPaymentSettings()]);
 
   // Can't take orders without prices: show a clear message instead of a broken form
   if (!data || data.sizes.length === 0 || data.types.length === 0 || data.services.length === 0) {
@@ -36,7 +36,7 @@ export default async function NewOrderPage() {
   // Suspense is needed because the form reads the step from the URL (?step=2)
   return (
     <Suspense>
-      <CustomerOrderForm sizes={data.sizes} types={data.types} categories={data.categories} services={data.services} prices={toPrices(data)} />
+      <CustomerOrderForm sizes={data.sizes} types={data.types} categories={data.categories} services={data.services} prices={toPrices(data)} paymentSettings={payment} />
     </Suspense>
   );
 }

@@ -41,6 +41,7 @@ If something looks wrong, write down what happened (screenshot, order number, ti
 | Prices per page, add-on prices (binding, lamination per size), service prices, Photo Printing price per size | Pricing & options | Admin |
 | Paper sizes and paper types (archive instead of deleting) | Pricing & options | Admin |
 | Shop name, address, phone, hours | Settings → Shop info | Admin |
+| Cash on Pickup / GCash on or off, GCash QR code, account name, receipt required | Settings → Payment | Admin |
 | Staff accounts | Users | Admin |
 
 New prices only apply to **new** orders. Existing orders keep the price they were placed with.
@@ -73,6 +74,14 @@ Stock states: **OK** · **Low stock** (at or below the reorder level) · **Out o
 6. Print the job, then **Mark ready for pickup** (the customer sees it on their tracking page)
 7. When the customer pays at the counter: **Record payment & complete** (Cash, or Online payment: check the
    GCash / Maya / bank transfer confirmation on their phone first)
+
+**GCash orders (paid in Step 4 of the order form):** the Price card says **Pending verification**.
+1. **View receipt**, then open the shop's GCash app and find the same reference number and amount.
+2. Found it → **Confirm payment**. Not found → **Reject** with a reason (the customer sees it and pays at pickup).
+3. The order can't be completed until you do one of these. A confirmed order needs no payment at pickup:
+   **Record payment & complete** just completes it.
+
+Never confirm from the receipt picture alone: pictures can be edited.
 
 If the files show a different number of pages or something must change, set the **Final price** with a note
 before completing. The customer sees the final price on their tracking page.
@@ -108,17 +117,19 @@ Stock in it by hand.
 3. Check the Materials card and the inventory
 4. Add stock (Stock in)
 5. Process an order: Start processing → Mark ready → Record payment & complete
-6. Sign in as Admin and change a demo price (then change it back)
-7. Create a demo order from the customer site and track it
-8. Test an out-of-stock situation (set a demo paper to 0 with Stock out, try Start processing)
+6. Place a GCash order (after the admin set up Settings → Payment), then View receipt → Confirm payment → complete it
+7. Sign in as Admin and change a demo price (then change it back)
+8. Create a demo order from the customer site and track it
+9. Test an out-of-stock situation (set a demo paper to 0 with Stock out, try Start processing)
 
 After each step, explain back what happened and why. If you can't explain it yet, do it once more.
 
 ## Known limitations
 
 - DOCX files can't be previewed in the browser (download them).
-- Customers can't pay inside the website. Online payments (GCash, Maya, bank transfer) are checked by staff at the
-  counter and recorded as "Online payment".
+- GCash is checked by hand: the website never confirms a payment by itself. Staff must find it in the shop's GCash
+  app before pressing Confirm. Refunds are done outside the system.
+- Orders with a "Price to be confirmed" item can only be paid at pickup.
 - Only document paper, lamination film and photo paper (Photo Printing) are taken from stock automatically; other
   supplies are counted by hand.
 - Photo Printing sizes start as "Price to be confirmed". Set each size's price in Pricing & options → Services.

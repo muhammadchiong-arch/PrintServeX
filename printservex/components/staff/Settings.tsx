@@ -2,21 +2,25 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Info } from "lucide-react";
+import { Download, Info, Paperclip } from "lucide-react";
 import { useShop } from "@/components/ShopProvider";
 import { Button } from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Input } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
 import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/components/ui/Toast";
 import { formatDateTime } from "@/lib/format";
-import { saveShop } from "@/lib/admin-actions";
-import { UPLOAD_RULES, type Shop } from "@/lib/shop";
+import { prepareQrUpload, savePaymentSettings, saveShop } from "@/lib/admin-actions";
+import { contentTypeFor } from "@/lib/files";
+import type { PaymentSettings } from "@/lib/payments";
+import { SHOP_PUBLIC_BUCKET, UPLOAD_RULES, type Shop } from "@/lib/shop";
+import { supabase } from "@/lib/supabase";
 import type { StaffData } from "@/lib/staff-data";
 import { PageTitle, tableHead } from "./parts";
 import { useStaff } from "./StaffStore";
 
-type Tab = "shop" | "backup" | "audit";
+type Tab = "shop" | "payment" | "backup" | "audit";
 type BackupFile = { name: string; at: string; size: string; url: string };
 
 // Saved in Supabase (shop_settings). The footer, home page, confirmation and status pages
@@ -63,6 +67,131 @@ function ShopInfo() {
       </p>
       <div className="col-span-2">
         <Button type="submit" size="md" disabled={saving}>
+          {saving ? "Saving…" : "Save changes"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+// Settings → Payment (supabase/014_payments.sql). Customers see these in Step 4 of the order form.
+// The QR must be the shop's real GCash QR code (GCash app → Receive → QR code → Download).
+function PaymentSetup({ initial }: { initial: PaymentSettings }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [f, setF] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const set = (patch: Partial<PaymentSettings>) => setF((old) => ({ ...old, ...patch }));
+
+  // The picture goes straight to Storage with a one-time link; it's used once you press Save
+  const uploadQr = async (file: File) => {
+    setUploading(true);
+    try {
+      const ticket = await prepareQrUpload(file.name, file.size);
+      if (!ticket.ok) return toast({ kind: "error", message: ticket.error });
+      const { error } = await supabase.storage
+        .from(SHOP_PUBLIC_BUCKET)
+        .uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: contentTypeFor(file.name) });
+      if (error) return toast({ kind: "error", message: "The QR code couldn't be uploaded. Try again." });
+      set({ qrPath: ticket.path, qrUrl: URL.createObjectURL(file) });
+      toast({ message: "QR code uploaded. Press Save changes to use it." });
+    } catch {
+      toast({ kind: "error", message: "We couldn't reach the server. Check your connection and try again." });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <form
+      className="flex max-w-[744px] flex-col gap-4 p-6"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (saving || uploading) return;
+        setSaving(true);
+        const result = await savePaymentSettings({
+          cashEnabled: f.cashEnabled,
+          gcashEnabled: f.gcashEnabled,
+          qrPath: f.qrPath,
+          accountName: f.accountName,
+          instructions: f.instructions,
+          receiptRequired: f.receiptRequired,
+        }).catch(() => null);
+        setSaving(false);
+        if (!result?.ok) {
+          toast({ kind: "error", message: result?.error ?? "We couldn't reach the server. Check your connection and try again." });
+          return;
+        }
+        toast({ message: "Payment settings saved. The order form uses them now." });
+        router.refresh();
+      }}
+    >
+      <Checkbox checked={f.cashEnabled} onChange={(v) => set({ cashEnabled: v })}>
+        <b>Cash on Pickup</b> · customers pay at the counter when they collect the order
+      </Checkbox>
+      <Checkbox checked={f.gcashEnabled} onChange={(v) => set({ gcashEnabled: v })}>
+        <b>GCash</b> · customers scan the shop&apos;s QR code, then staff confirm the payment in the GCash app
+      </Checkbox>
+
+      <div className="grid grid-cols-[224px_minmax(0,1fr)] gap-6">
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium">GCash QR code</span>
+          {f.qrUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- the shop's own QR picture from Storage
+            <img src={f.qrUrl} alt="The shop's GCash QR code" className="size-56 rounded-lg border border-border bg-white object-contain p-2" />
+          ) : (
+            <div className="flex size-56 items-center justify-center rounded-lg border border-dashed border-[#b9c6da] p-4 text-center text-xs text-slate">
+              No QR code yet. GCash stays off for customers until you upload one.
+            </div>
+          )}
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 self-start rounded-lg border border-dashed border-[#b9c6da] px-3 py-2 text-sm font-semibold text-blue transition-colors duration-150 hover:bg-blue-tint has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-blue">
+            <input
+              type="file"
+              accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+              className="sr-only"
+              disabled={uploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void uploadQr(file);
+              }}
+            />
+            <Paperclip size={16} aria-hidden />
+            {uploading ? "Uploading…" : f.qrUrl ? "Replace QR code" : "Upload QR code"}
+          </label>
+          <span className="text-xs text-slate">PNG or JPG, up to 2 MB</span>
+        </div>
+        <div className="flex flex-col gap-4">
+          <Input
+            size="md"
+            label="GCash account name"
+            value={f.accountName}
+            onChange={(e) => set({ accountName: e.target.value })}
+            maxLength={80}
+            placeholder="e.g. PrintServeX Printing"
+            hint="Customers check this name before paying."
+          />
+          <Textarea
+            label="Extra payment note (optional)"
+            value={f.instructions}
+            onChange={(e) => set({ instructions: e.target.value })}
+            maxLength={500}
+            placeholder="e.g. Send the exact amount. Payments are checked during shop hours."
+          />
+          <Checkbox checked={f.receiptRequired} onChange={(v) => set({ receiptRequired: v })}>
+            Customers must upload a screenshot of their GCash receipt (the reference number is always required)
+          </Checkbox>
+        </div>
+      </div>
+
+      <p className="flex items-start gap-2 text-sm text-slate">
+        <Info size={16} aria-hidden className="mt-0.5 shrink-0" />
+        GCash orders show as &quot;Pending verification&quot; until staff confirm them. Orders with a price to be confirmed can only be paid at
+        pickup.
+      </p>
+      <div>
+        <Button type="submit" size="md" disabled={saving || uploading}>
           {saving ? "Saving…" : "Save changes"}
         </Button>
       </div>
@@ -163,7 +292,7 @@ function AuditLog() {
 }
 
 // S12
-export function Settings() {
+export function Settings({ payment }: { payment: PaymentSettings }) {
   const [tab, setTab] = useState<Tab>("shop");
   return (
     <>
@@ -175,11 +304,13 @@ export function Settings() {
           onChange={setTab}
           tabs={[
             { value: "shop", label: "Shop info" },
+            { value: "payment", label: "Payment" },
             { value: "backup", label: "Backup & restore" },
             { value: "audit", label: "Audit log" },
           ]}
         />
         {tab === "shop" && <ShopInfo />}
+        {tab === "payment" && <PaymentSetup initial={payment} />}
         {tab === "backup" && <BackupRestore />}
         {tab === "audit" && <AuditLog />}
       </div>

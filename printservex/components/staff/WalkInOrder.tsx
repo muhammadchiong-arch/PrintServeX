@@ -4,13 +4,14 @@ import { useRouter } from "next/navigation";
 import { OrderWizard } from "@/components/order/OrderWizard";
 import { useToast } from "@/components/ui/Toast";
 import { submitOrder } from "@/lib/customer-orders";
+import type { PaymentSettings } from "@/lib/payments";
 import type { Prices } from "@/lib/price";
 import type { Catalog } from "@/components/order/types";
 
-// S5: the same 4 steps as the customer form (C2), inside the staff layout.
+// S5: the same 5 steps as the customer form (C2), inside the staff layout.
 // On "Create order" the files are uploaded and the order is saved (same checks as online
 // orders, priced on the server), then its detail page opens.
-export function WalkInOrder(props: Omit<Catalog, "photoSizes"> & { prices: Prices }) {
+export function WalkInOrder(props: Omit<Catalog, "photoSizes"> & { prices: Prices; paymentSettings: PaymentSettings }) {
   const router = useRouter();
   const toast = useToast();
 
@@ -18,8 +19,8 @@ export function WalkInOrder(props: Omit<Catalog, "photoSizes"> & { prices: Price
     <OrderWizard
       {...props}
       variant="staff"
-      onSubmit={async ({ details, lines, catalog }) => {
-        const result = await submitOrder(details, lines, catalog, { walkIn: true });
+      onSubmit={async ({ details, lines, catalog, checkout }) => {
+        const result = await submitOrder(details, lines, catalog, checkout, { walkIn: true });
         if (!result.ok) return result.error;
         toast({ message: `Walk-in order ${result.order.ref} created.` });
         router.replace(`/staff/orders/${result.order.ref}`);

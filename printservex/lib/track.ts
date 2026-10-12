@@ -1,8 +1,9 @@
 // SERVER ONLY: looks up one order for the tracking page (C4/C5).
 import "server-only";
 import { normalizePhone } from "@/lib/order-details";
-import { ORDER_SELECT, rowToOrder, type OrderRow } from "@/lib/order-rows";
+import { rowToOrder, selectOrders, type OrderRow } from "@/lib/order-rows";
 import { REF_PATTERN, type Order } from "@/lib/orders";
+import { maskRef } from "@/lib/payments";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export type TrackResult = { ok: true; order: Order } | { ok: false; error: "format" | "not_found" | "unavailable" | "too_many" };
@@ -41,7 +42,7 @@ export async function trackOrder(refInput: string, codeInput: string): Promise<T
   const attempt = await recordTry(ref);
   if (attempt && attempt.count > MAX_WRONG_TRIES) return { ok: false, error: "too_many" };
 
-  const { data, error } = await supabaseAdmin.from("orders").select(ORDER_SELECT).eq("ref", ref).maybeSingle();
+  const { data, error } = await selectOrders((columns) => supabaseAdmin.from("orders").select(columns).eq("ref", ref).maybeSingle());
   if (error) {
     console.error("trackOrder failed", error);
     if (attempt) await supabaseAdmin.from("track_attempts").delete().eq("id", attempt.id); // our fault, not a wrong try
@@ -61,6 +62,12 @@ export async function trackOrder(refInput: string, codeInput: string): Promise<T
       remarks: undefined,
       history: order.history.map((h) => ({ ...h, by: "" })), // staff names stay private
       payment: order.payment && { ...order.payment, by: "" },
+      // Staff names stay private; only the last 4 characters of the GCash reference are shown
+      paymentInfo: order.paymentInfo && {
+        ...order.paymentInfo,
+        reference: order.paymentInfo.reference && maskRef(order.paymentInfo.reference),
+        verifiedBy: undefined,
+      },
     },
   };
 }
