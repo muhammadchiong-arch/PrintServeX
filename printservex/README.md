@@ -202,6 +202,12 @@ Vercel → Settings → Environment Variables; without it the cleanup never runs
   the server works out the amount, refuses a GCash order whose total changed, checks the receipt's real type, and the
   database sets the status. GCash is only offered when every item has a price. Receipts are in the private
   `order-files` bucket (staff open them with a 5-minute link); the QR is in the public `shop-public` bucket.
+- **Page counts:** `lib/page-count.ts` (browser and server). PDF pages are read with `pdf-lib` from the document's
+  page list (exact). DOCX uses the count Word saved in the file, shown as "estimated". The server downloads every
+  document and counts it again, so a page number edited in the browser is never used; only a file that can't be
+  counted keeps the customer's number, marked "check the page count" for staff (`details.pageCount`). Such orders
+  can't be paid by GCash. Printing is charged per printed page (pages × copies × price per page); sheets of paper
+  (fewer when double-sided) are shown separately and used for inventory.
 - **Uploaded files are checked by content:** the server reads each file's first bytes, so a renamed file
   (e.g. `.exe` → `.jpg`) is refused (`lib/file-signature.ts`).
 
