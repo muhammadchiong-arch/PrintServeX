@@ -4,11 +4,18 @@
 // checked here, and again by the admin_* database functions (supabase/007_pricing_shop.sql).
 // After a save, the customer pages are rebuilt right away so they show the new prices / info.
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { FAILED, NOT_ADMIN, staffRpc, type ActionResult } from "@/lib/action-results";
+import { FAILED, NOT_ADMIN, SIGNED_OUT, staffRpc, type ActionResult, type Fail } from "@/lib/action-results";
+import { matchesExtension } from "@/lib/file-signature";
+import type { PaymentSettings } from "@/lib/payments";
 import { LAMINATION_SIZE_IDS, type AddOnKey, type LaminationSize } from "@/lib/price";
-import type { Shop } from "@/lib/shop";
+import { SHOP_PUBLIC_BUCKET, type Shop } from "@/lib/shop";
 import { getCurrentStaff } from "@/lib/staff-session";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+
+// What Settings → Payment sends (the QR link is worked out from qrPath, never sent)
+export type PaymentSettingsInput = Omit<PaymentSettings, "qrUrl">;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isAddOnKey = (v: unknown): v is AddOnKey => v === "binding" || v === "lamination";
@@ -96,4 +103,67 @@ export async function saveShop(shop: Shop): Promise<ActionResult> {
     p_usual_turnaround: shop.usualTurnaround,
     p_pickup_note: shop.pickupNote,
   });
+}
+
+// ---------- Settings → Payment (supabase/014_payments.sql) ----------
+
+const QR_PATH = /^gcash-qr-[0-9a-f-]{36}\.(png|jpg)$/;
+const QR_MAX_MB = 2;
+
+// Step 1 of changing the GCash QR: a one-time upload link (the picture goes straight to Storage)
+export async function prepareQrUpload(name: string, size: number): Promise<{ ok: true; path: string; token: string } | Fail> {
+  const me = await getCurrentStaff();
+  if (!me) return SIGNED_OUT;
+  if (me.role !== "Admin") return NOT_ADMIN;
+  const ext = typeof name === "string" ? name.split(".").pop()?.toLowerCase() : "";
+  if (ext !== "png" && ext !== "jpg" && ext !== "jpeg") return { ok: false, error: "Upload the QR code as a PNG or JPG picture." };
+  if (!Number.isInteger(size) || size <= 0 || size > QR_MAX_MB * 1024 * 1024) return { ok: false, error: `The QR picture must be ${QR_MAX_MB} MB or less.` };
+  const path = `gcash-qr-${randomUUID()}.${ext === "png" ? "png" : "jpg"}`;
+  const { data, error } = await supabaseAdmin.storage.from(SHOP_PUBLIC_BUCKET).createSignedUploadUrl(path);
+  if (error || !data) {
+    console.error("prepareQrUpload:", error?.message);
+    return { ok: false, error: "The QR code couldn't be uploaded. Run supabase/014_payments.sql, then try again." };
+  }
+  return { ok: true, path: data.path, token: data.token };
+}
+
+// Is this really a PNG/JPG picture in the shop-public bucket? (reads its first bytes only)
+async function isRealQr(path: string): Promise<boolean> {
+  const url = supabaseAdmin.storage.from(SHOP_PUBLIC_BUCKET).getPublicUrl(path).data.publicUrl;
+  try {
+    const res = await fetch(url, { headers: { Range: "bytes=0-1023" }, cache: "no-store" });
+    if (!res.ok) return false;
+    return matchesExtension(path, new Uint8Array(await res.arrayBuffer()).slice(0, 1024));
+  } catch (e) {
+    console.error("isRealQr:", e);
+    return false;
+  }
+}
+
+export async function savePaymentSettings(s: PaymentSettingsInput): Promise<ActionResult> {
+  const me = await getCurrentStaff();
+  if (!me) return SIGNED_OUT;
+  if (me.role !== "Admin") return NOT_ADMIN;
+  const bools = [s?.cashEnabled, s?.gcashEnabled, s?.receiptRequired];
+  if (!s || bools.some((b) => typeof b !== "boolean") || typeof s.accountName !== "string" || typeof s.instructions !== "string") return FAILED;
+  if (s.qrPath !== null && (typeof s.qrPath !== "string" || !QR_PATH.test(s.qrPath))) return FAILED;
+
+  const { data: current } = await supabaseAdmin.from("shop_settings").select("gcash_qr_path").eq("id", 1).maybeSingle();
+  const oldPath: string | null = current?.gcash_qr_path ?? null;
+  // A new QR: check it was really uploaded and is a real picture
+  if (s.qrPath && s.qrPath !== oldPath && !(await isRealQr(s.qrPath))) {
+    return { ok: false, error: "That QR file isn't a real PNG or JPG picture. Upload it again." };
+  }
+
+  const result = await adminRpc("admin_save_payment_settings", {
+    p_cash: s.cashEnabled,
+    p_gcash: s.gcashEnabled,
+    p_qr_path: s.qrPath,
+    p_account_name: s.accountName.slice(0, 80),
+    p_instructions: s.instructions.slice(0, 500),
+    p_receipt_required: s.receiptRequired,
+  });
+  // The old QR picture isn't used any more
+  if (result.ok && oldPath && oldPath !== s.qrPath) await supabaseAdmin.storage.from(SHOP_PUBLIC_BUCKET).remove([oldPath]);
+  return result;
 }

@@ -1,7 +1,7 @@
 // SERVER ONLY. Loads everything the staff portal shows, AS the signed-in staff member,
 // so the RLS rules decide what comes back (e.g. only an admin gets every staff account).
 import "server-only";
-import { ORDER_SELECT, rowToOrder, type OrderRow } from "@/lib/order-rows";
+import { rowToOrder, selectOrders, type OrderRow } from "@/lib/order-rows";
 import type { Order } from "@/lib/orders";
 import { isLaminationSize, photoSizeText } from "@/lib/price";
 import type { ActivityEntry, InventoryItem, InventoryLink, StaffUser } from "@/lib/staff-types";
@@ -85,7 +85,7 @@ async function loadInventory(supabase: Awaited<ReturnType<typeof createStaffClie
 export async function loadStaffData(): Promise<StaffData | null> {
   const supabase = await createStaffClient();
   const [orders, items, users, activity, sizes, types, photoSizes] = await Promise.all([
-    supabase.from("orders").select(ORDER_SELECT).order("created_at", { ascending: false }).limit(MAX_ORDERS),
+    selectOrders((columns) => supabase.from("orders").select(columns).order("created_at", { ascending: false }).limit(MAX_ORDERS)),
     loadInventory(supabase),
     supabase
       .from("staff_profiles")

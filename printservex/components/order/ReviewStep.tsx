@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/Card";
 import { formatPeso } from "@/lib/format";
 import type { CustomerDetails } from "@/lib/order-details";
+import { METHOD_LABELS, normalizeGcashRef, PAYMENT_STATUS_LABELS, type PaymentChoice } from "@/lib/payments";
 import { priceLine, type OrderPrice, type Prices } from "@/lib/price";
 import { quoteNote } from "./PriceSummary";
 import { describeLine, lineInput, type Catalog, type OrderLine } from "./types";
@@ -12,6 +13,7 @@ type ReviewStepProps = {
   totals: OrderPrice;
   catalog: Catalog;
   prices: Prices;
+  payment: PaymentChoice;
   onEdit: (step: number) => void;
 };
 
@@ -26,8 +28,8 @@ function CardTitle({ title, onEdit }: { title: string; onEdit: () => void }) {
   );
 }
 
-// Step 4: everything the customer entered, grouped by service, before they submit
-export function ReviewStep({ details, chosen, lines, totals, catalog, prices, onEdit }: ReviewStepProps) {
+// Step 5: everything the customer entered, grouped by service, before they submit
+export function ReviewStep({ details, chosen, lines, totals, catalog, prices, payment, onEdit }: ReviewStepProps) {
   const sizeIds = catalog.sizes.map((s) => s.id);
   const note = quoteNote(totals.quoteCount);
 
@@ -75,13 +77,49 @@ export function ReviewStep({ details, chosen, lines, totals, catalog, prices, on
         </button>
       </Card>
 
+      {payment.method && (
+        <Card padding="sm" className="flex flex-col gap-2 text-sm lg:p-6">
+          <CardTitle title="Payment" onEdit={() => onEdit(3)} />
+          <div className="flex justify-between gap-3">
+            <span className="text-slate">Payment method</span>
+            <span className="font-semibold">{METHOD_LABELS[payment.method]}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span className="text-slate">{payment.method === "gcash" ? "Amount" : "Amount due"}</span>
+            <span className="tabular font-semibold">{formatPeso(totals.total)}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span className="text-slate">Payment status</span>
+            <span className="text-right font-medium">{PAYMENT_STATUS_LABELS[payment.method === "gcash" ? "pending_verification" : "unpaid"]}</span>
+          </div>
+          {payment.method === "gcash" && (
+            <>
+              <div className="flex justify-between gap-3">
+                <span className="text-slate">GCash reference</span>
+                <span className="tabular font-medium">{normalizeGcashRef(payment.reference)}</span>
+              </div>
+              {payment.receipt && (
+                <div className="flex justify-between gap-3">
+                  <span className="text-slate">Receipt</span>
+                  <span className="min-w-0 truncate font-medium">{payment.receipt.name}</span>
+                </div>
+              )}
+            </>
+          )}
+        </Card>
+      )}
+
       <Card padding="sm" className="flex flex-col gap-2 text-sm lg:p-6">
         <div className="flex justify-between text-base font-semibold">
           <span>Estimated total</span>
           <span className="tabular">{formatPeso(totals.total)}</span>
         </div>
         {note && <p className="text-xs font-medium text-slate">{note}: staff confirm those prices after checking your order.</p>}
-        <p className="text-xs text-slate">Staff check your order and confirm the final price. You pay at pickup.</p>
+        <p className="text-xs text-slate">
+          {payment.method === "gcash"
+            ? "Staff check your order and your GCash payment. It is marked paid only after they confirm it."
+            : "Staff check your order and confirm the final price. You pay at pickup."}
+        </p>
       </Card>
     </div>
   );

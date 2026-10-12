@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { formatPeso } from "@/lib/format";
 import { describeItem, estimatedTotal, isQuote, itemTotal, PAYMENT_LABELS, type Order } from "@/lib/orders";
+import { METHOD_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/payments";
 import { useShop } from "@/components/ShopProvider";
 import { StatusTimeline } from "./StatusTimeline";
 
@@ -84,6 +85,28 @@ export function OrderStatusView({ order }: { order: Order }) {
               Staff confirm the final price after checking your order.
             </p>
           )
+        )}
+
+        {/* The payment chosen at checkout, until the order is completed */}
+        {!order.payment && order.paymentInfo && order.status !== "cancelled" && (
+          <div className="flex flex-col gap-1 border-t border-border pt-2">
+            <div className="flex justify-between gap-3">
+              <span className="text-slate">Payment</span>
+              <span className="text-right font-medium">
+                {METHOD_LABELS[order.paymentInfo.method]} · {PAYMENT_STATUS_LABELS[order.paymentInfo.status]}
+              </span>
+            </div>
+            {order.paymentInfo.reference && <p className="text-xs text-slate">GCash reference {order.paymentInfo.reference}</p>}
+            {order.paymentInfo.status === "pending_verification" && (
+              <p className="text-xs text-slate">Staff are checking your GCash payment. It shows as paid once they confirm it.</p>
+            )}
+            {order.paymentInfo.status === "rejected" && (
+              <p className="rounded-lg bg-cancelled-tint p-2 text-xs text-cancelled">
+                We couldn&apos;t confirm your GCash payment{order.paymentInfo.rejectReason ? ` (${order.paymentInfo.rejectReason})` : ""}. Please pay at
+                pickup, or call {shop.phone}.
+              </p>
+            )}
+          </div>
         )}
 
         {order.payment && (

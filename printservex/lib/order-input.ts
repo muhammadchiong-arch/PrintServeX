@@ -3,14 +3,16 @@
 // calculates the price itself. The browser does NOT send any price.
 
 import type { CustomerDetails } from "@/lib/order-details";
-import type { Order } from "@/lib/orders";
+import type { Order, PaymentMethod } from "@/lib/orders";
+import { normalizeGcashRef } from "@/lib/payments";
 import { isLaminationSize, type PrintOptions } from "@/lib/price";
 import { LIMITS, type LineDetails } from "@/lib/services";
 
 export type FileMeta = { name: string; size: number };
 export type UploadTicket = { path: string; token: string };
 
-export type PrepareUploadsResult = { ok: true; batch: string; uploads: UploadTicket[] } | { ok: false; error: string };
+// receipt: the upload link for the GCash receipt, when there is one
+export type PrepareUploadsResult = { ok: true; batch: string; uploads: UploadTicket[]; receipt: UploadTicket | null } | { ok: false; error: string };
 
 // One line of the order. The server looks up the service and works out the price itself.
 export type PlaceOrderItem = {
@@ -26,6 +28,18 @@ export type PlaceOrderInput = {
   batch: string; // the upload folder from prepareUploads ("" when the order has no files)
   items: PlaceOrderItem[];
   walkIn: boolean; // made by staff at the counter (S5); the server checks they are signed in
+  checkoutId: string | null; // one per checkout form: sending it twice never makes two orders
+  payment: PlaceOrderPayment | null; // null = a form from before the Payment step (treated as cash at pickup)
+  expectedTotal: number | null; // the total the customer saw; GCash orders are refused if the server's differs
+};
+
+// Step 4. Only the method, the GCash reference and where the receipt was uploaded are read:
+// never a status, an amount or a "paid" flag.
+export type PlaceOrderPayment = {
+  method: PaymentMethod;
+  reference: string | null; // GCash only, already cleaned (normalizeGcashRef)
+  receiptPath: string | null;
+  receiptName: string | null;
 };
 
 export type PlaceOrderResult = { ok: true; order: Order } | { ok: false; error: string };
@@ -37,6 +51,7 @@ const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !
 const str = (v: unknown, max = 200): v is string => typeof v === "string" && v.length <= max;
 const int = (v: unknown, min: number, max: number): v is number => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 const bool = (v: unknown): v is boolean => typeof v === "boolean";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export function parseFileMetas(raw: unknown): FileMeta[] | null {
   if (!Array.isArray(raw)) return null;
@@ -161,10 +176,34 @@ export function parsePlaceOrderInput(raw: unknown): PlaceOrderInput | null {
       details,
     });
   }
+  if (raw.checkoutId !== undefined && !(typeof raw.checkoutId === "string" && UUID.test(raw.checkoutId))) return null;
+  if (raw.expectedTotal !== undefined && raw.expectedTotal !== null && !num(raw.expectedTotal, 0, 10_000_000)) return null;
+
+  let payment: PlaceOrderPayment | null = null;
+  if (raw.payment !== undefined && raw.payment !== null) {
+    const p = raw.payment;
+    if (!isObj(p) || !oneOf(p.method, ["cash", "gcash"] as const)) return null;
+    const hasReceipt = p.receiptPath !== null && p.receiptPath !== undefined;
+    if (hasReceipt && (!str(p.receiptPath, 400) || !str(p.receiptName, 255))) return null;
+    if (p.reference !== null && p.reference !== undefined && !str(p.reference, 60)) return null;
+    const reference = typeof p.reference === "string" ? normalizeGcashRef(p.reference) : "";
+    // A reference or a receipt only belongs to GCash
+    if (p.method === "cash" && (reference !== "" || hasReceipt)) return null;
+    payment = {
+      method: p.method,
+      reference: reference || null,
+      receiptPath: hasReceipt ? (p.receiptPath as string) : null,
+      receiptName: hasReceipt ? (p.receiptName as string) : null,
+    };
+  }
+
   return {
     customer: { name: c.name, phone: c.phone, email: c.email, consent: c.consent },
     batch: raw.batch,
     items,
     walkIn: raw.walkIn === true,
+    checkoutId: typeof raw.checkoutId === "string" ? raw.checkoutId : null,
+    payment,
+    expectedTotal: typeof raw.expectedTotal === "number" ? raw.expectedTotal : null,
   };
 }
