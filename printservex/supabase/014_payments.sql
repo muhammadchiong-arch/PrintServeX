@@ -53,13 +53,35 @@ end $$;
 
 -- ===== 2. Payment on each order =====
 -- payment_method: chosen at checkout; when the order is completed it is set to how they really paid.
-alter table public.orders add column if not exists payment_status text not null default 'unpaid';
-alter table public.orders drop constraint if exists orders_payment_status_check;
+alter table public.orders add column if not exists payment_status text;
+-- An older test version may already have a payment_status column with other values and rules.
+-- Remove its old rules, then set every order from the real payment record: paid_at = paid at the counter.
+do $$
+declare v_con record;
+begin
+  for v_con in
+    select conname from pg_constraint
+    where conrelid = 'public.orders'::regclass and contype = 'c' and pg_get_constraintdef(oid) ilike '%payment_status%'
+  loop
+    execute format('alter table public.orders drop constraint %I', v_con.conname);
+  end loop;
+end $$;
+update public.orders
+   set payment_status = case when paid_at is not null then 'paid' else 'unpaid' end
+ where payment_status is null or payment_status not in ('unpaid', 'pending_verification', 'paid', 'rejected');
+alter table public.orders alter column payment_status set default 'unpaid';
+alter table public.orders alter column payment_status set not null;
 alter table public.orders add constraint orders_payment_status_check
   check (payment_status in ('unpaid', 'pending_verification', 'paid', 'rejected'));
 alter table public.orders add column if not exists payment_amount numeric(10,2) check (payment_amount >= 0); -- the total the customer was asked to pay online
 alter table public.orders add column if not exists gcash_reference text;
 alter table public.orders drop constraint if exists orders_gcash_reference_check;
+-- Old test values: clean them the same way the website does (no spaces/dashes, capitals); drop ones that can't be used
+update public.orders set gcash_reference = upper(regexp_replace(gcash_reference, '[\s-]+', '', 'g')) where gcash_reference is not null;
+update public.orders set gcash_reference = null where gcash_reference !~ '^[A-Z0-9]{8,30}$';
+update public.orders o set gcash_reference = null
+ where gcash_reference is not null
+   and exists (select 1 from public.orders d where d.gcash_reference = o.gcash_reference and d.id < o.id);
 alter table public.orders add constraint orders_gcash_reference_check check (gcash_reference is null or gcash_reference ~ '^[A-Z0-9]{8,30}$');
 alter table public.orders add column if not exists receipt_path text;
 alter table public.orders add column if not exists payment_submitted_at timestamptz;
