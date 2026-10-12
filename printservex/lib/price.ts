@@ -26,9 +26,6 @@ export type LaminationSize = (typeof LAMINATION_SIZE_IDS)[number];
 export const LAMINATION_LABELS: Record<LaminationSize, string> = { id: "ID", short: "Short", a4: "A4", legal: "Legal" };
 export type LaminationPrice = { id: LaminationSize; label: string; price: number };
 
-// Used only until supabase/010_lamination_sizes.sql has been run
-export const DEFAULT_LAMINATION_PRICES: Record<LaminationSize, number> = { id: 15, short: 20, a4: 30, legal: 40 };
-
 // Checks a value that came from the browser or the database
 export const isLaminationSize = (v: unknown): v is LaminationSize => LAMINATION_SIZE_IDS.some((id) => id === v);
 

@@ -68,9 +68,11 @@ export function checkReceipt(file: File | { name: string; size: number }): strin
 }
 
 // Can this order be paid by GCash? Business rule: only when the whole price is known.
-export function gcashUnavailable(settings: PaymentSettings, quoteCount: number, total: number): string | null {
+// reviewCount: documents whose page count staff must check (estimated or not counted)
+export function gcashUnavailable(settings: PaymentSettings, quoteCount: number, total: number, reviewCount = 0): string | null {
   if (!settings.gcashEnabled || !settings.qrUrl) return "GCash isn't available right now. You can pay at pickup.";
   if (quoteCount > 0) return "Some prices are confirmed by staff first, so this order is paid at pickup.";
+  if (reviewCount > 0) return "Staff check some page counts first, so this order is paid at pickup.";
   if (total <= 0) return "There is nothing to pay online yet.";
   return null;
 }
@@ -80,13 +82,13 @@ export function gcashUnavailable(settings: PaymentSettings, quoteCount: number, 
 export function paymentProblem(
   choice: PaymentChoice,
   settings: PaymentSettings,
-  order: { quoteCount: number; total: number },
+  order: { quoteCount: number; total: number; reviewCount?: number },
   walkIn: boolean,
 ): string | null {
   if (!choice.method) return "Choose how you'll pay.";
   // Walk-ins can always pay cash at the counter; the setting is for online orders
   if (choice.method === "cash") return settings.cashEnabled || walkIn ? null : "Cash on Pickup isn't available. Choose GCash.";
-  const unavailable = gcashUnavailable(settings, order.quoteCount, order.total);
+  const unavailable = gcashUnavailable(settings, order.quoteCount, order.total, order.reviewCount ?? 0);
   if (unavailable) return unavailable;
   const refProblem = checkGcashRef(choice.reference);
   if (refProblem) return refProblem;

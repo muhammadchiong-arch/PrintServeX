@@ -1,6 +1,8 @@
 // The service catalog (supabase/009_services.sql) and the rules for each kind of service.
 // Used by the order form in the browser AND by the server, so both check the same things.
 
+import type { PageNote, PageStatus } from "@/lib/page-count";
+
 export type ServiceKind = "document" | "finishing" | "photo" | "design" | "large_format" | "custom" | "school_business";
 export type FileRule = "required" | "optional" | "none";
 
@@ -51,6 +53,9 @@ export type LineDetails = {
   photoSize?: string;
   photoSizeName?: string; // e.g. "4R (4 × 6 in)", set by the server so the order keeps it
   photoRate?: number; // ₱ per print at order time, set by the server (missing = to be confirmed)
+  // Document: how the SERVER found the page count (lib/page-count.ts). Never read from the browser.
+  pageCount?: PageStatus;
+  pageNote?: PageNote;
 };
 
 export const LIMITS = {

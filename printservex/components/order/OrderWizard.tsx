@@ -5,9 +5,10 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Stepper } from "@/components/ui/Stepper";
 import { useToast } from "@/components/ui/Toast";
 import type { Checkout } from "@/lib/customer-orders";
-import { checkFile, isImage, readPageCount } from "@/lib/files";
+import { checkFile } from "@/lib/files";
 import { formatPeso } from "@/lib/format";
 import { EMPTY_DETAILS, validateDetails, type CustomerDetails, type DetailsErrors } from "@/lib/order-details";
+import { readPageCount } from "@/lib/page-count";
 import { EMPTY_PAYMENT, paymentProblem, type PaymentChoice, type PaymentSettings } from "@/lib/payments";
 import { priceOrder, type Prices, type PrintOptions } from "@/lib/price";
 import { defaultDetails, multiFile, type LineDetails, type Service } from "@/lib/services";
@@ -95,6 +96,7 @@ export function OrderWizard({ sizes, types, categories, services, prices, varian
     status: service.kind === "document" && file ? "reading" : "ready",
     progress: 0,
     pagesDetected: null,
+    pageStatus: null,
     options: defaultOptions(1, service),
     details: defaultDetails(service, defaultSizeId),
   });
@@ -147,21 +149,37 @@ export function OrderWizard({ sizes, types, categories, services, prices, varian
     }
 
     setFileErrors((all) => ({ ...all, [serviceId]: errors }));
-    setLines((all) => [...all, ...accepted]);
+    // Room is checked again against the latest list, so two quick drops can't go over the limit
+    setLines((all) => [...all, ...accepted.slice(0, Math.max(0, MAX_LINES - all.length))]);
 
-    // Count pages of each new document, showing progress while it reads
+    // Count pages of each new document, showing progress while it reads. Results are matched by line id,
+    // so a file that was removed or replaced meanwhile is never changed by an old result.
     for (const line of accepted) {
       if (line.status !== "reading" || !line.file) continue;
       const file = line.file;
-      readPageCount(file, (progress) => updateLine(line.id, { progress })).then((pages) =>
+      readPageCount(file, (progress) => updateLine(line.id, { progress })).then((count) => {
+        if (!count.ok) {
+          // e.g. a PDF with no pages: it can't be printed, so it is taken out with a message
+          setLines((all) => all.filter((l) => l.id !== line.id));
+          setFileErrors((all) => ({ ...all, [serviceId]: [...(all[serviceId] ?? []), `${file.name} ${count.error}.`] }));
+          return;
+        }
         setLines((all) =>
           all.map((l) =>
             l.id === line.id
-              ? { ...l, status: "ready", progress: 100, pagesDetected: pages, options: { ...l.options, pages: pages ?? (isImage(file.name) ? 1 : l.options.pages) } }
+              ? {
+                  ...l,
+                  status: "ready",
+                  progress: 100,
+                  pagesDetected: count.pages,
+                  pageStatus: count.status,
+                  pageNote: count.note,
+                  options: { ...l.options, pages: count.pages ?? l.options.pages },
+                }
               : l,
           ),
-        ),
-      );
+        );
+      });
     }
   };
 
@@ -215,7 +233,9 @@ export function OrderWizard({ sizes, types, categories, services, prices, varian
           : undefined);
 
   // ---------- Payment (step 4) ----------
-  const payProblem = paymentProblem(payment, paymentSettings, { quoteCount: totals.quoteCount, total: totals.total }, isStaff);
+  // Document page counts that aren't exact (estimated DOCX, or checked by staff): the price isn't final yet
+  const reviewCount = lines.filter((l) => l.pageStatus !== null && l.pageStatus !== "detected").length;
+  const payProblem = paymentProblem(payment, paymentSettings, { quoteCount: totals.quoteCount, total: totals.total, reviewCount }, isStaff);
   const totalChanged = payment.method === "gcash" && agreedTotal !== null && agreedTotal !== totals.total;
   const paymentHint = payProblem ?? (totalChanged ? `Your total changed to ${formatPeso(totals.total)}. Check the amount you pay.` : undefined);
 
@@ -328,6 +348,7 @@ export function OrderWizard({ sizes, types, categories, services, prices, varian
           choice={payment}
           total={totals.total}
           quoteCount={totals.quoteCount}
+          reviewCount={reviewCount}
           walkIn={isStaff}
           showProblems={triedPayment || totalChanged}
           problem={paymentHint ?? null}

@@ -12,7 +12,8 @@ import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
 import { extensionOf, isImage } from "@/lib/files";
 import { formatDate, formatDateTime, formatPeso, formatPhone, formatTime } from "@/lib/format";
-import { materialNeeds, type MaterialNeed } from "@/lib/inventory-needs";
+import { materialNeeds, sheetsOf, type MaterialNeed } from "@/lib/inventory-needs";
+import { PAGE_NOTES } from "@/lib/page-count";
 import { amountDue, canCancel, estimatedTotal, isQuote, itemAddOns, itemPrinting, itemTotal, laminationLabel, laminationLine, NEXT_STATUS, PAYMENT_LABELS, quoteCount, type Order, type OrderItem } from "@/lib/orders";
 import { areaSqFt, BACKGROUND_LABELS } from "@/lib/services";
 import { METHOD_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/payments";
@@ -643,6 +644,9 @@ function FilePreview({ orderRef, position, fileName }: { orderRef: string; posit
   );
 }
 
+// Where a document's page count came from (details.pageCount, set by the server)
+const PAGE_SOURCE = { detected: "counted from file", estimated: "estimated (Word)", review: "typed, check it", old: "as entered" } as const;
+
 // One line of the order: the service, its options and its file (if any)
 function ItemCard({ item: i, orderRef, position }: { item: OrderItem; orderRef: string; position: number }) {
   const d = i.details ?? {};
@@ -652,13 +656,17 @@ function ItemCard({ item: i, orderRef, position }: { item: OrderItem; orderRef: 
       case "document": {
         // Lamination: size, price per sheet × sheets = subtotal, as saved with the order
         const lam = laminationLine(i);
+        const pages = i.pages ?? 0;
+        const copies = i.copies ?? 0;
         return [
           ["Paper size", i.size ?? "—"],
           ["Paper type", i.paper ?? "—"],
           ["Print", i.color ? "Color" : "B&W"],
-          ["Pages", String(i.pages ?? "—")],
+          ["Pages", i.pages === null ? "—" : `${pages} · ${PAGE_SOURCE[d.pageCount ?? "old"]}`],
           ["Copies", String(i.copies ?? "—")],
           ["Sides", d.sides === "double" ? "Double" : "Single"],
+          ["Printed pages", String(pages * copies)],
+          ["Sheets of paper", String(sheetsOf(i))],
           ["Add-ons", [i.binding && "Binding", i.lamination && laminationLabel(i)].filter(Boolean).join(", ") || "None"],
           ...(lam ? [["Lamination", `${lam.size} · ${lam.quantity} × ${formatPeso(lam.unitPrice)} = ${formatPeso(lam.subtotal)}`] as [string, string]] : []),
         ];
@@ -717,6 +725,17 @@ function ItemCard({ item: i, orderRef, position }: { item: OrderItem; orderRef: 
             </div>
           ))}
         </dl>
+        {i.kind === "document" && d.pageCount && d.pageCount !== "detected" && (
+          // Business rule: a page count that wasn't read exactly from the file is checked before printing
+          <p className="flex items-start gap-2 rounded-lg bg-pending-tint px-3 py-2 text-xs">
+            <TriangleAlert size={16} aria-hidden className="shrink-0" />
+            <span>
+              <b>Check the page count.</b> {d.pageNote ? `${PAGE_NOTES[d.pageNote]}. ` : ""}
+              {d.pageCount === "estimated" ? "Word's own count, which can change when printed." : "The customer typed this number."} Open the file,
+              then set the final price if it differs.
+            </span>
+          </p>
+        )}
         {d.notes && (
           <p className="whitespace-pre-line rounded-lg bg-bg px-3 py-2 text-sm">
             <span className="text-xs text-slate">Customer notes: </span>
